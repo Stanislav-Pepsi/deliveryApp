@@ -1,17 +1,19 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useState } from 'react';
+﻿import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   BackHandler,
   Image,
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { useEffect } from 'react';
+import Text from '../components/Text';
+import { CartItem } from '../App';
+import { createOrder } from '../api/orders';
 
 const GREEN = '#8DBB00';
 const GREEN_DARK = '#4a6600';
@@ -24,10 +26,13 @@ interface Props {
   address?: string;
   onAddressPress?: () => void;
   onBack: () => void;
-  onSuccess: (deliveryType: 'delivery' | 'pickup', payment: 'kaspi' | 'cash') => void;
+  onSuccess: (deliveryType: 'delivery' | 'pickup', payment: 'kaspi' | 'cash', orderId: string) => void;
+  authToken: string | null;
+  phone: string;
+  cartItems: CartItem[];
 }
 
-export default function CheckoutScreen({ total, address, onAddressPress, onBack, onSuccess }: Props) {
+export default function CheckoutScreen({ total, address, onAddressPress, onBack, onSuccess, authToken, phone, cartItems }: Props) {
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
   const [timeType, setTimeType] = useState<'asap' | 'scheduled'>('asap');
   const [payment, setPayment] = useState<'kaspi' | 'cash'>('kaspi');
@@ -40,6 +45,23 @@ export default function CheckoutScreen({ total, address, onAddressPress, onBack,
     });
     return () => sub.remove();
   }, [onBack]);
+
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState('');
+
+  const handleSubmit = async () => {
+    if (!authToken) return;
+    setSubmitting(true);
+    setSubmitError('');
+    try {
+      const order = await createOrder(cartItems, deliveryType, payment, address ?? '', comment, authToken, phone);
+      onSuccess(deliveryType, payment, order.id);
+    } catch (e: any) {
+      setSubmitError(e.message || 'Ошибка оформления заказа');
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <View style={styles.root}>
@@ -160,13 +182,9 @@ export default function CheckoutScreen({ total, address, onAddressPress, onBack,
                 <Ionicons name="checkmark" size={12} color="#fff" />
               </View>
             )}
-            <Image
-              source={require('../assets/png-klev-club-9nmb-p-kaspi-logotip-png-28.png')}
-              style={styles.kaspiLogoImg}
-              resizeMode="contain"
-            />
-            <Text style={styles.payName}>Kaspi KZ</Text>
-            <Text style={styles.paySub}>Быстрая оплата</Text>
+            <Ionicons name="card-outline" size={28} color="rgba(255,255,255,0.6)" style={{ marginBottom: 8 }} />
+            <Text style={styles.payName}>Картой</Text>
+            <Text style={styles.paySub}>Банковская карта</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.payCard, payment === 'cash' && styles.payCardActive]}
@@ -201,14 +219,21 @@ export default function CheckoutScreen({ total, address, onAddressPress, onBack,
 
       {/* Bottom bar */}
       <View style={styles.bottomBar}>
+        {!!submitError && <Text style={styles.errorTxt}>{submitError}</Text>}
         <View style={styles.totalRow}>
           <Text style={styles.totalLabel}>Итого с доставкой</Text>
           <Text style={styles.totalVal}>{total.toLocaleString('ru-RU')} ₸</Text>
         </View>
-        <TouchableOpacity style={styles.payBtn} activeOpacity={0.85} onPress={() => onSuccess(deliveryType, payment)}>
-          <Text style={styles.payBtnTxt}>
-            {payment === 'kaspi' ? 'Оплатить через Kaspi' : 'Оформить заказ'}
-          </Text>
+        <TouchableOpacity
+          style={[styles.payBtn, submitting && { opacity: 0.6 }]}
+          activeOpacity={0.85}
+          onPress={handleSubmit}
+          disabled={submitting}
+        >
+          {submitting
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.payBtnTxt}>{payment === 'kaspi' ? 'Оплатить картой' : 'Оформить заказ'}</Text>
+          }
         </TouchableOpacity>
       </View>
     </View>
@@ -327,12 +352,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  kaspiLogoImg: {
-    width: 28,
-    height: 28,
-    marginBottom: 8,
-    alignSelf: 'flex-start',
-  },
   payName: { color: '#fff', fontWeight: '700', fontSize: 14, marginBottom: 3 },
   paySub: { color: 'rgba(255,255,255,0.4)', fontSize: 11 },
 
@@ -347,6 +366,12 @@ const styles = StyleSheet.create({
     minHeight: 54,
   },
 
+  errorTxt: {
+    color: '#e05252',
+    fontSize: 13,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
   bottomBar: {
     paddingHorizontal: 20,
     paddingTop: 14,

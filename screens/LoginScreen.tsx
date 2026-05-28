@@ -1,26 +1,32 @@
-import { StatusBar } from 'expo-status-bar';
+﻿import { StatusBar } from 'expo-status-bar';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   ImageBackground,
   StyleSheet,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import Text from '../components/Text';
+import { sendOtp, verifyOtp } from '../api/auth';
 
 interface Props {
-  onSuccess: (name: string) => void;
+  onSuccess: (name: string, token: string, phone: string) => void;
 }
 
 export default function LoginScreen({ onSuccess }: Props) {
-  const [name, setName]         = useState('');
+  const [name, setName]               = useState('');
   const [nameFocused, setNameFocused] = useState(false);
-  const [phone, setPhone] = useState('');
-  const [focused, setFocused] = useState(false);
-  const [codeSent, setCodeSent] = useState(false);
-  const [code, setCode] = useState('');
+  const [phone, setPhone]             = useState('');
+  const [focused, setFocused]         = useState(false);
+  const [codeSent, setCodeSent]       = useState(false);
+  const [code, setCode]               = useState('');
   const [codeFocused, setCodeFocused] = useState(false);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState('');
+
+  const rawPhone = '+7' + phone.replace(/\s/g, '');
 
   const formatPhone = (text: string) => {
     const digits = text.replace(/\D/g, '').slice(0, 10);
@@ -35,13 +41,39 @@ export default function LoginScreen({ onSuccess }: Props) {
       formatted = `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6, 8)} ${digits.slice(8)}`;
     }
     setPhone(formatted);
+    setError('');
   };
 
-  const handlePress = () => {
+  const handlePress = async () => {
+    setError('');
     if (!codeSent) {
-      setCodeSent(true);
+      if (phone.replace(/\s/g, '').length < 10) {
+        setError('Введите номер телефона');
+        return;
+      }
+      setLoading(true);
+      try {
+        await sendOtp(rawPhone);
+        setCodeSent(true);
+      } catch (e: any) {
+        setError(e.message ?? 'Ошибка отправки кода');
+      } finally {
+        setLoading(false);
+      }
     } else {
-      onSuccess(name.trim() || 'Гость');
+      if (code.length < 4) {
+        setError('Введите 4-значный код');
+        return;
+      }
+      setLoading(true);
+      try {
+        const result = await verifyOtp(rawPhone, code, name);
+        onSuccess(result.user.name || name.trim() || 'Гость', result.accessToken, rawPhone);
+      } catch (e: any) {
+        setError(e.message ?? 'Неверный код');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -74,7 +106,7 @@ export default function LoginScreen({ onSuccess }: Props) {
           <TextInput
             style={[styles.input, { paddingHorizontal: 16 }]}
             value={name}
-            onChangeText={setName}
+            onChangeText={(t) => { setName(t); setError(''); }}
             placeholder="Введите ваше имя"
             placeholderTextColor="rgba(255,255,255,0.35)"
             returnKeyType="next"
@@ -83,12 +115,11 @@ export default function LoginScreen({ onSuccess }: Props) {
             underlineColorAndroid="transparent"
             selectionColor={GREEN}
             cursorColor={GREEN}
-            editable={!codeSent}
+            editable={!codeSent && !loading}
           />
         </View>
 
         <Text style={styles.label}>ТЕЛЕФОН</Text>
-
         <View style={[styles.inputBox, focused && styles.inputBoxFocused]}>
           <View style={styles.countryCodeBox}>
             <Text style={styles.countryCodeText}>KZ +7</Text>
@@ -106,6 +137,7 @@ export default function LoginScreen({ onSuccess }: Props) {
             underlineColorAndroid="transparent"
             selectionColor={GREEN}
             cursorColor={GREEN}
+            editable={!codeSent && !loading}
           />
         </View>
 
@@ -116,21 +148,24 @@ export default function LoginScreen({ onSuccess }: Props) {
               <TextInput
                 style={[styles.input, { paddingHorizontal: 16 }]}
                 value={code}
-                onChangeText={(t) => setCode(t.replace(/\D/g, '').slice(0, 6))}
+                onChangeText={(t) => { setCode(t.replace(/\D/g, '').slice(0, 4)); setError(''); }}
                 keyboardType="number-pad"
-                placeholder="• • • • • •"
+                placeholder="• • • •"
                 placeholderTextColor="rgba(255,255,255,0.35)"
-                maxLength={6}
+                maxLength={4}
                 onFocus={() => setCodeFocused(true)}
                 onBlur={() => setCodeFocused(false)}
                 underlineColorAndroid="transparent"
                 selectionColor={GREEN}
                 cursorColor={GREEN}
                 autoFocus
+                editable={!loading}
               />
             </View>
           </>
         )}
+
+        {!!error && <Text style={styles.errorTxt}>{error}</Text>}
 
         <Text style={styles.terms}>
           {'Продолжая, вы соглашаетесь с '}
@@ -140,20 +175,33 @@ export default function LoginScreen({ onSuccess }: Props) {
       </View>
 
       <View style={styles.bottom}>
-        <TouchableOpacity style={styles.button} activeOpacity={0.85} onPress={handlePress}>
-          <Text style={styles.buttonText}>
-            {codeSent ? 'Войти' : 'Получить код'}
-          </Text>
+        <TouchableOpacity
+          style={[styles.button, loading && styles.buttonDisabled]}
+          activeOpacity={0.85}
+          onPress={handlePress}
+          disabled={loading}
+        >
+          {loading
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.buttonText}>{codeSent ? 'Войти' : 'Получить код'}</Text>
+          }
         </TouchableOpacity>
-        <Text style={styles.hint}>
-          Не приходит SMS? Проверьте сигнал{'\n'}и не отключайте приложение во время получения кода.
-        </Text>
+        {codeSent && !loading && (
+          <TouchableOpacity onPress={() => { setCodeSent(false); setCode(''); setError(''); }}>
+            <Text style={styles.resendTxt}>Отправить код повторно</Text>
+          </TouchableOpacity>
+        )}
+        {!codeSent && (
+          <Text style={styles.hint}>
+            Не приходит SMS? Проверьте сигнал{'\n'}и не отключайте приложение во время получения кода.
+          </Text>
+        )}
       </View>
     </ImageBackground>
   );
 }
 
-const GREEN = '#8DBB00';
+const GREEN        = '#8DBB00';
 const GREEN_BORDER = '#6A9A00';
 
 const styles = StyleSheet.create({
@@ -167,15 +215,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 56,
   },
-  logoRow: {
-    flexDirection: 'row',
-    marginBottom: 24,
-  },
-  logoText: { color: '#fff', fontSize: 18, fontWeight: '700', letterSpacing: 0.3 },
-  logoGreen: { color: GREEN, fontSize: 18, fontWeight: '700', letterSpacing: 0.3 },
-  title: { fontSize: 36, fontWeight: '800', marginBottom: 14, lineHeight: 44 },
-  titleWhite: { color: '#fff' },
-  titleGreen: { color: GREEN },
+  logoRow:   { flexDirection: 'row', marginBottom: 24 },
+  logoText:  { color: '#fff', fontSize: 18, fontWeight: '700', letterSpacing: 0.3 },
+  logoGreen: { color: GREEN,  fontSize: 18, fontWeight: '700', letterSpacing: 0.3 },
+  title:       { fontSize: 36, fontWeight: '800', marginBottom: 14, lineHeight: 44 },
+  titleWhite:  { color: '#fff' },
+  titleGreen:  { color: GREEN },
   subtitle: {
     color: 'rgba(255,255,255,0.6)',
     fontSize: 15,
@@ -216,7 +261,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 14,
   },
-  terms: { color: 'rgba(255,255,255,0.45)', fontSize: 13, lineHeight: 20 },
+  errorTxt: {
+    color: '#e05252',
+    fontSize: 13,
+    marginTop: -12,
+    marginBottom: 16,
+    fontWeight: '500',
+  },
+  terms:     { color: 'rgba(255,255,255,0.45)', fontSize: 13, lineHeight: 20 },
   termsLink: { color: GREEN },
   bottom: { paddingHorizontal: 24, paddingBottom: 36, gap: 16 },
   button: {
@@ -225,7 +277,14 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
     alignItems: 'center',
   },
+  buttonDisabled: { opacity: 0.6 },
   buttonText: { color: '#fff', fontSize: 18, fontWeight: '700', letterSpacing: 0.2 },
+  resendTxt: {
+    color: 'rgba(255,255,255,0.45)',
+    fontSize: 14,
+    textAlign: 'center',
+    textDecorationLine: 'underline',
+  },
   hint: {
     color: 'rgba(255,255,255,0.35)',
     fontSize: 13,

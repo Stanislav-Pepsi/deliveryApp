@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { useState } from 'react';
 import {
   BackHandler,
@@ -6,11 +6,11 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import Text from '../components/Text';
 import { useEffect } from 'react';
 import { CartItem } from '../App';
 
@@ -25,8 +25,6 @@ interface Props {
   onCheckout: () => void;
 }
 
-const SIZE_LABEL: Record<string, string> = { s: 'S', m: 'M', l: 'L' };
-const SIZE_DELTA: Record<string, number> = { s: -300, m: 0, l: 600 };
 
 export default function CartScreen({ items, onUpdateQty, onBack, onCheckout }: Props) {
   const [promo, setPromo] = useState('');
@@ -39,10 +37,7 @@ export default function CartScreen({ items, onUpdateQty, onBack, onCheckout }: P
     return () => sub.remove();
   }, [onBack]);
 
-  const subtotal = items.reduce((sum, item) => {
-    const base = parseInt(item.dish.price.replace(/\D/g, ''), 10);
-    return sum + (base + SIZE_DELTA[item.size]) * item.qty;
-  }, 0);
+  const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.qty, 0);
   const delivery = items.length > 0 ? 750 : 0;
   const total = subtotal + delivery;
 
@@ -87,17 +82,18 @@ export default function CartScreen({ items, onUpdateQty, onBack, onCheckout }: P
           <>
             {/* Items */}
             {items.map(item => {
-              const base = parseInt(item.dish.price.replace(/\D/g, ''), 10);
-              const price = (base + SIZE_DELTA[item.size]) * item.qty;
               return (
                 <View key={`${item.dish.id}-${item.size}`} style={styles.itemCard}>
-                  <Image source={item.dish.img} style={styles.itemImg} resizeMode="cover" />
+                  {item.dish.img
+                    ? <Image source={item.dish.img} style={styles.itemImg} resizeMode="cover" />
+                    : <View style={[styles.itemImg, { backgroundColor: '#1a2010' }]} />
+                  }
                   <View style={styles.itemInfo}>
                     <Text style={styles.itemName}>{item.dish.name}</Text>
                     <Text style={styles.itemMeta}>
-                      {item.dish.category} · {SIZE_LABEL[item.size]} · {item.dish.time}
+                      {item.dish.category}{item.sizeName ? ` · ${item.sizeName}` : ''}
                     </Text>
-                    <Text style={styles.itemPrice}>{price.toLocaleString('ru-RU')} ₸</Text>
+                    <Text style={styles.itemPrice}>{(item.unitPrice * item.qty).toLocaleString('ru-RU')} ₸</Text>
                   </View>
                   <View style={styles.qtyRow}>
                     <TouchableOpacity

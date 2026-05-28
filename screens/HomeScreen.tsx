@@ -1,18 +1,19 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
   Dimensions,
   Image,
   ImageBackground,
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import Text from '../components/Text';
 
 const { width: W } = Dimensions.get('window');
 
@@ -24,26 +25,22 @@ const BORDER = 'rgba(255,255,255,0.0)';
 const GLASS_BG = 'rgba(10,18,8,0.42)';
 
 const PROMOS = [
-  { id: '1', tag: 'ПОПРОБУЙТЕ НОВОЕ', title: 'Сет «Базилик»', sub: '–15% до 31 марта', blob: 'rgba(80,160,20,0.35)' },
-  { id: '2', tag: 'ЗАВТРАКИ', title: 'Кофе на своё', sub: 'Каждый день с 8:00', blob: 'rgba(20,80,160,0.35)' },
+  { id: '1', tag: 'ПОПРОБУЙТЕ НОВОЕ', title: 'Сет «Базилик»', sub: '–15% до 31 марта', blob: 'rgba(80,160,20,0.35)', img: null },
+  { id: '2', tag: 'ЗАВТРАКИ', title: 'Кофе на своё', sub: 'Каждый день с 8:00', blob: 'rgba(20,80,160,0.35)', img: null },
+  { id: '3', tag: '', title: '', sub: '', blob: 'transparent', img: require('../assets/promo_350x160.jpg') },
 ];
+const PROMO_DATA = [...PROMOS, PROMOS[0]];
 
-const ORDER_STATUSES = [
-  { label: 'Принят', done: true },
-  { label: 'Готовится', done: true },
-  { label: 'Готов', done: false },
-  { label: 'Передан', done: false },
-];
+const ACTIVE_STATUSES = new Set(['CREATED', 'IN_PROGRESS', 'READY', 'ON_WAY']);
+const STATUS_STEP: Record<string, number> = {
+  CREATED: 0, IN_PROGRESS: 1, READY: 1, ON_WAY: 2, DELIVERED: 3,
+};
+const STEPS_DELIVERY = ['Принят', 'Готовится', 'Передан', 'Доставлен'];
+const STEPS_PICKUP   = ['Принят', 'Готовится', 'Готов', 'Выдан'];
 
-const CATEGORIES = [
-  { id: 'all', label: 'Всё', count: 124 },
-  { id: 'sets', label: 'Сеты', count: 18 },
-  { id: 'bowls', label: 'Боулы', count: 14 },
-  { id: 'pasta', label: 'Паста', count: 9 },
-  { id: 'salads', label: 'Салаты', count: 11 },
-];
-
-import { DISHES } from '../data/dishes';
+import { fetchMenu } from '../api/menu';
+import { ApiOrder, fetchOrders } from '../api/orders';
+import { OrderSummary } from './OrdersScreen';
 
 const NAV = [
   { key: 'home', label: 'Главная', icon: 'home-outline' as const, iconActive: 'home' as const },
@@ -59,27 +56,68 @@ interface Props {
   onCartPress: () => void;
   onReservationPress: () => void;
   onProfilePress: () => void;
+  onOrderPress: (summary: OrderSummary) => void;
   cartCount: number;
   address?: string;
+  authToken?: string | null;
+  onDishesLoaded?: (dishes: DishData[]) => void;
 }
 
-export default function HomeScreen({ onDishPress, onCartPress, onReservationPress, onProfilePress, cartCount, address }: Props) {
+export default function HomeScreen({ onDishPress, onCartPress, onReservationPress, onProfilePress, onOrderPress, cartCount, address, authToken, onDishesLoaded }: Props) {
   const [search, setSearch] = useState('');
   const [activeCat, setActiveCat] = useState('all');
   const [activeNav, setActiveNav] = useState('home');
   const [promoIdx, setPromoIdx] = useState(0);
   const promoRef = useRef<ScrollView>(null);
+  const scrollPos = useRef(0);
 
   useEffect(() => {
     const interval = setInterval(() => {
-      setPromoIdx(prev => {
-        const next = (prev + 1) % PROMOS.length;
-        promoRef.current?.scrollTo({ x: next * PROMO_STEP, animated: true });
-        return next;
-      });
-    }, 3500);
+      const next = scrollPos.current + 1;
+      promoRef.current?.scrollTo({ x: next * PROMO_STEP, animated: true });
+      scrollPos.current = next;
+      setPromoIdx(next % PROMOS.length);
+      if (next >= PROMOS.length) {
+        setTimeout(() => {
+          promoRef.current?.scrollTo({ x: 0, animated: false });
+          scrollPos.current = 0;
+        }, 350);
+      }
+    }, 7000);
     return () => clearInterval(interval);
   }, []);
+
+  const [dishes, setDishes] = useState<DishData[]>([]);
+  const [dishLoading, setDishLoading] = useState(true);
+  const [activeOrders, setActiveOrders] = useState<ApiOrder[]>([]);
+
+  useEffect(() => {
+    if (!authToken) return;
+    fetchMenu(authToken)
+      .then(data => { setDishes(data); onDishesLoaded?.(data); })
+      .catch(() => {})
+      .finally(() => setDishLoading(false));
+  }, [authToken]);
+
+  useEffect(() => {
+    if (!authToken) return;
+    fetchOrders(authToken)
+      .then(all => setActiveOrders(all.filter(o => ACTIVE_STATUSES.has(o.status))))
+      .catch(() => {});
+  }, [authToken]);
+
+  const catIds = ['all', ...Array.from(new Set(dishes.map(d => d.category).filter(Boolean)))];
+  const dynCats = catIds.map(id => ({
+    id,
+    label: id === 'all' ? 'ВСЕ' : id,
+    count: id === 'all' ? dishes.length : dishes.filter(d => d.category === id).length,
+  }));
+  const filtered = dishes.filter(d => {
+    const q = search.toLowerCase().trim();
+    if (q && !d.name.toLowerCase().includes(q) && !d.desc.toLowerCase().includes(q)) return false;
+    if (activeCat !== 'all' && d.category !== activeCat) return false;
+    return true;
+  });
 
   return (
     <ImageBackground
@@ -104,9 +142,6 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
               <Text style={styles.restaurantAddr}>ТВЕРСКАЯ, 12 · 0.4 КМ</Text>
             </View>
           </View>
-          <BlurView intensity={100} tint="dark" style={styles.bellBtn}>
-            <Ionicons name="notifications-outline" size={22} color="#fff" />
-          </BlurView>
         </View>
 
         {/* Delivery address */}
@@ -130,31 +165,57 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
           />
         </BlurView>
 
-        {/* Active order */}
-        <BlurView intensity={100} tint="dark" style={styles.orderCard}>
-          <View style={styles.orderHeader}>
-            <Text style={styles.orderTitle}>Активный заказ</Text>
-            <Text style={styles.orderNum}>#2847</Text>
-          </View>
-          <View style={styles.stepperRow}>
-            {ORDER_STATUSES.map((s, i) => {
-              const leftGreen = s.done;
-              const rightGreen = i < ORDER_STATUSES.length - 1 && s.done && ORDER_STATUSES[i + 1].done;
-              return (
-                <View key={i} style={styles.stepCol}>
-                  <View style={styles.dotRow}>
-                    <View style={[styles.stepLine, leftGreen && styles.stepLineDone]} />
-                    <View style={[styles.stepDot, s.done && styles.stepDotDone]} />
-                    <View style={[styles.stepLine, rightGreen && styles.stepLineDone]} />
-                  </View>
-                  <Text style={[styles.stepLabel, s.done && styles.stepLabelDone]}>
-                    {s.label}
+        {/* Active orders */}
+        {activeOrders.map(o => {
+          const isDelivery = o.orderType === 'DELIVERY';
+          const steps = isDelivery ? STEPS_DELIVERY : STEPS_PICKUP;
+          const currentStep = STATUS_STEP[o.status] ?? 0;
+          let addressText = '';
+          if (o.deliveryAddress) {
+            try { const p = JSON.parse(o.deliveryAddress); addressText = [p.streetName, p.house].filter(Boolean).join(', '); }
+            catch { addressText = o.deliveryAddress; }
+          }
+          const total = parseFloat(o.totalAmount) || 0;
+          const summary: OrderSummary = {
+            id: o.id,
+            iikoNumber: o.iikoNumber,
+            status: o.status,
+            total,
+            deliveryType: isDelivery ? 'delivery' : 'pickup',
+            payment: o.paymentType === 'CASH' ? 'cash' : 'kaspi',
+            address: addressText,
+            orderItems: (o.items ?? []).map(i => ({ name: (i as any).name || 'Позиция', qty: i.amount, total: i.price * i.amount })),
+          };
+          return (
+            <TouchableOpacity key={o.id} activeOpacity={0.85} onPress={() => onOrderPress(summary)} style={styles.orderCardWrap}>
+              <BlurView intensity={100} tint="dark" style={styles.orderCard}>
+                <View style={styles.orderHeader}>
+                  <Text style={styles.orderTitle}>Активный заказ</Text>
+                  <Text style={styles.orderNum}>
+                    {o.iikoNumber != null ? `№${o.iikoNumber}` : '#...'}
                   </Text>
                 </View>
-              );
-            })}
-          </View>
-        </BlurView>
+                <View style={styles.stepperRow}>
+                  {steps.map((step, i) => {
+                    const done = i <= currentStep;
+                    const isFirst = i === 0;
+                    const isLast = i === steps.length - 1;
+                    return (
+                      <View key={step} style={styles.stepCol}>
+                        <View style={styles.dotRow}>
+                          <View style={[styles.stepLine, isFirst && styles.stepLineInvisible, done && !isFirst && styles.stepLineDone]} />
+                          <View style={[styles.stepDot, done && styles.stepDotDone]} />
+                          <View style={[styles.stepLine, isLast && styles.stepLineInvisible, i < currentStep && styles.stepLineDone]} />
+                        </View>
+                        <Text style={[styles.stepLabel, done && styles.stepLabelDone]}>{step}</Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              </BlurView>
+            </TouchableOpacity>
+          );
+        })}
 
         {/* Promo carousel */}
         <ScrollView
@@ -163,15 +224,30 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.promoContent}
           onMomentumScrollEnd={(e) => {
-            setPromoIdx(Math.round(e.nativeEvent.contentOffset.x / PROMO_STEP));
+            const rawIdx = Math.round(e.nativeEvent.contentOffset.x / PROMO_STEP);
+            scrollPos.current = rawIdx;
+            setPromoIdx(rawIdx % PROMOS.length);
+            if (rawIdx >= PROMOS.length) {
+              setTimeout(() => {
+                promoRef.current?.scrollTo({ x: 0, animated: false });
+                scrollPos.current = 0;
+              }, 350);
+            }
           }}
         >
-          {PROMOS.map((p) => (
-            <BlurView key={p.id} intensity={100} tint="dark" style={styles.promoCard}>
-              <View style={[styles.promoBlob, { backgroundColor: p.blob }]} />
-              <Text style={styles.promoTag}>{p.tag}</Text>
-              <Text style={styles.promoTitle}>{p.title}</Text>
-              <Text style={styles.promoSub}>{p.sub}</Text>
+          {PROMO_DATA.map((p, idx) => (
+            <BlurView key={idx} intensity={100} tint="dark" style={styles.promoCard}>
+              {p.img
+                ? <Image source={p.img} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+                : (
+                  <>
+                    <View style={[styles.promoBlob, { backgroundColor: p.blob }]} />
+                    <Text style={styles.promoTag}>{p.tag}</Text>
+                    <Text style={styles.promoTitle}>{p.title}</Text>
+                    <Text style={styles.promoSub}>{p.sub}</Text>
+                  </>
+                )
+              }
             </BlurView>
           ))}
         </ScrollView>
@@ -184,47 +260,56 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
         </View>
 
         {/* Categories */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.catsContent}
-        >
-          {CATEGORIES.map(c => (
-            <TouchableOpacity key={c.id} onPress={() => setActiveCat(c.id)} activeOpacity={0.75}>
-              <BlurView
-                intensity={activeCat === c.id ? 100 : 95}
-                tint="dark"
-                style={[styles.catChip, activeCat === c.id && styles.catChipActive]}
-              >
-                <Text style={[styles.catLabel, activeCat === c.id && styles.catLabelActive]}>
-                  {c.label}
-                </Text>
-                <Text style={[styles.catCount, activeCat === c.id && styles.catCountActive]}>
-                  {' '}{c.count}
-                </Text>
-              </BlurView>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {!dishLoading && dishes.length > 0 && (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.catsContent}
+          >
+            {dynCats.map(c => (
+              <TouchableOpacity key={c.id} onPress={() => setActiveCat(c.id)} activeOpacity={0.75}>
+                <BlurView
+                  intensity={activeCat === c.id ? 100 : 95}
+                  tint="dark"
+                  style={[styles.catChip, activeCat === c.id && styles.catChipActive]}
+                >
+                  <Text style={[styles.catLabel, activeCat === c.id && styles.catLabelActive]}>
+                    {c.label}
+                  </Text>
+                  <Text style={[styles.catCount, activeCat === c.id && styles.catCountActive]}>
+                    {' '}{c.count}
+                  </Text>
+                </BlurView>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        )}
 
         {/* Dish grid */}
-        <View style={styles.grid}>
-          {DISHES.map((d) => (
-            <TouchableOpacity key={d.id} activeOpacity={0.85} onPress={() => onDishPress(d)}>
-              <BlurView intensity={100} tint="dark" style={styles.dishCard}>
-                <Image source={d.img} style={styles.dishImg} resizeMode="cover" />
-                <View style={styles.dishBody}>
-                  <Text style={styles.dishName}>{d.name}</Text>
-                  <Text style={styles.dishWeight}>{d.weight}</Text>
-                  <Text style={styles.dishDesc} numberOfLines={3}>{d.desc}</Text>
-                  <View style={styles.priceBtn}>
-                    <Text style={styles.priceTxt}>{d.price}</Text>
+        {dishLoading ? (
+          <ActivityIndicator color={GREEN} size="large" style={{ marginTop: 40 }} />
+        ) : (
+          <View style={styles.grid}>
+            {filtered.map((d) => (
+              <TouchableOpacity key={d.id} activeOpacity={0.85} onPress={() => onDishPress(d)}>
+                <BlurView intensity={100} tint="dark" style={styles.dishCard}>
+                  {d.img
+                    ? <Image source={d.img} style={styles.dishImg} resizeMode="cover" />
+                    : <View style={[styles.dishImg, { backgroundColor: 'rgba(255,255,255,0.04)' }]} />
+                  }
+                  <View style={styles.dishBody}>
+                    <Text style={styles.dishName}>{d.name}</Text>
+                    <Text style={styles.dishWeight}>{d.weight}</Text>
+                    <Text style={styles.dishDesc} numberOfLines={3}>{d.desc}</Text>
+                    <View style={styles.priceBtn}>
+                      <Text style={styles.priceTxt}>{d.price}</Text>
+                    </View>
                   </View>
-                </View>
-              </BlurView>
-            </TouchableOpacity>
-          ))}
-        </View>
+                </BlurView>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
       </ScrollView>
 
@@ -317,11 +402,11 @@ const styles = StyleSheet.create({
   searchBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 14,
+    borderRadius: 12,
     marginHorizontal: 20,
     marginBottom: 16,
     paddingHorizontal: 14,
-    paddingVertical: 13,
+    paddingVertical: 9,
     gap: 10,
     overflow: 'hidden',
     borderWidth: 1,
@@ -338,9 +423,8 @@ const styles = StyleSheet.create({
   },
   addrTxt: { color: 'rgba(255,255,255,0.75)', fontSize: 12, flex: 1 },
 
+  orderCardWrap: { marginHorizontal: 20, marginBottom: 16 },
   orderCard: {
-    marginHorizontal: 20,
-    marginBottom: 16,
     borderRadius: 16,
     padding: 16,
     overflow: 'hidden',
@@ -362,6 +446,7 @@ const styles = StyleSheet.create({
   stepDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.2)' },
   stepDotDone: { backgroundColor: GREEN },
   stepLine: { flex: 1, height: 2, backgroundColor: 'rgba(255,255,255,0.15)' },
+  stepLineInvisible: { backgroundColor: 'transparent' },
   stepLineDone: { backgroundColor: GREEN },
   stepLabel: {
     textAlign: 'center', marginTop: 6,

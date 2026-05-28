@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
   BackHandler,
@@ -7,10 +7,10 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import Text from '../components/Text';
 import { CartItem, DishData } from '../App';
 import { CATEGORIES, DISHES } from '../data/dishes';
 
@@ -42,11 +42,7 @@ export default function BanquetMenuScreen({ items, onBack, onDishPress, onDone }
   const filtered = activeCat === 'all' ? DISHES : DISHES.filter(d => d.category === activeCat);
 
   const totalQty = items.reduce((s, i) => s + i.qty, 0);
-  const totalPrice = items.reduce((s, i) => {
-    const base = parseInt(i.dish.price.replace(/\D/g, ''), 10);
-    const delta = i.size === 's' ? -300 : i.size === 'l' ? 600 : 0;
-    return s + (base + delta) * i.qty;
-  }, 0);
+  const totalPrice = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
 
   const qtyForDish = (id: string) =>
     items.filter(i => i.dish.id === id).reduce((s, i) => s + i.qty, 0);

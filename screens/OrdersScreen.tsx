@@ -8,9 +8,12 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { io } from 'socket.io-client';
 import Text from '../components/Text';
 import { DishData, OrderDisplayItem } from '../App';
 import { ApiOrder, fetchOrders } from '../api/orders';
+
+const WS_URL = 'https://nonvirulently-nonpursuant-georgie.ngrok-free.dev';
 
 const GREEN      = '#8DBB00';
 const GREEN_DARK = '#4a6600';
@@ -33,10 +36,14 @@ export interface OrderSummary {
   iikoNumber: number | null;
   status: string;
   total: number;
+  bonusesSpent?: number | null;
+  promoDiscount?: number | null;
+  deliveryFee?: number | null;
   deliveryType: 'delivery' | 'pickup';
   payment: 'kaspi' | 'cash';
   address: string;
   orderItems: OrderDisplayItem[];
+  createdAt?: string;
 }
 
 interface Props {
@@ -54,23 +61,69 @@ function formatDateTime(iso: string) {
   return `${date} · ${time}`;
 }
 
+const MOCK_ORDER: ApiOrder = {
+  id: 'mock-001',
+  iikoNumber: 42,
+  orderType: 'DELIVERY',
+  status: 'DELIVERED',
+  paymentType: 'CARD',
+  paymentStatus: 'PAID',
+  totalAmount: '4590',
+  bonusesSpent: null,
+  bonusesEarned: null,
+  items: [
+    { productId: '1', name: 'Салат Свежий', amount: 1, price: 2600 },
+    { productId: '2', name: 'Греческий салат', amount: 2, price: 990 },
+  ],
+  deliveryAddress: JSON.stringify({ streetName: 'ул. Абая', house: '10' }),
+  promoDiscount: null,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
 export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }: Props) {
-  const [orders, setOrders] = useState<ApiOrder[]>([]);
+  const [orders, setOrders] = useState<ApiOrder[]>([MOCK_ORDER]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!authToken) { setLoading(false); return; }
     fetchOrders(authToken)
-      .then(setOrders)
+      .then(data => setOrders([MOCK_ORDER, ...data]))
       .catch(() => {})
       .finally(() => setLoading(false));
+  }, [authToken]);
+
+  // Polling каждые 15 секунд
+  useEffect(() => {
+    if (!authToken) return;
+    const interval = setInterval(() => {
+      fetchOrders(authToken)
+        .then(data => setOrders([MOCK_ORDER, ...data]))
+        .catch(() => {});
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [authToken]);
+
+  // WebSocket — мгновенное обновление статуса
+  useEffect(() => {
+    if (!authToken) return;
+    const socket = io(`${WS_URL}/client`, {
+      auth: { token: `Bearer ${authToken}` },
+      transports: ['websocket'],
+    });
+    socket.on('order:status_changed', (payload: { orderId: string; status: string }) => {
+      setOrders(prev => prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o));
+    });
+    return () => { socket.disconnect(); };
   }, [authToken]);
 
   const current = orders.filter(o => ACTIVE_STATUSES.has(o.status));
   const past    = orders.filter(o => !ACTIVE_STATUSES.has(o.status));
 
   const renderOrder = (o: ApiOrder) => {
-    const active = ACTIVE_STATUSES.has(o.status);
+    const isCardPayment = o.paymentType === 'CARD' || o.paymentType === 'KASPI';
+    const displayStatus = (o.status === 'CREATED' && isCardPayment) ? 'IN_PROGRESS' : o.status;
+    const active = ACTIVE_STATUSES.has(displayStatus);
     const total = parseFloat(o.totalAmount) || 0;
     let addressText = '';
     if (o.deliveryAddress) {
@@ -84,11 +137,15 @@ export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }
     const summary: OrderSummary = {
       id: o.id,
       iikoNumber: o.iikoNumber,
-      status: o.status,
+      status: displayStatus,
       total,
+      bonusesSpent: o.bonusesSpent ? parseFloat(o.bonusesSpent) : null,
+      deliveryFee: o.deliveryFee ? parseFloat(o.deliveryFee) : null,
+      promoDiscount: o.promoDiscount ? parseFloat(o.promoDiscount) : null,
       deliveryType: o.orderType === 'DELIVERY' ? 'delivery' : 'pickup',
       payment: o.paymentType === 'KASPI' ? 'kaspi' : o.paymentType === 'CASH' ? 'cash' : 'kaspi',
       address: addressText,
+      createdAt: o.createdAt,
       orderItems: (o.items ?? []).map(i => ({
         name: dishes.find(d => d.id === i.productId)?.name || (i as any).name || 'Позиция',
         qty: i.amount,
@@ -96,7 +153,7 @@ export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }
       })),
     };
     const itemCount = o.items?.length ?? 0;
-    const orderNum = o.iikoNumber != null ? `Заказ №${o.iikoNumber}` : 'Заказ #...';
+    const orderNum = o.iikoNumber != null ? `Заказ #${o.iikoNumber}` : 'Заказ #...';
     return (
       <TouchableOpacity
         key={o.id}
@@ -109,7 +166,9 @@ export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }
             <Text style={styles.orderNum}>{orderNum}</Text>
             <View style={[styles.badge, active ? styles.badgeActive : styles.badgeDone]}>
               <Text style={[styles.badgeTxt, active ? styles.badgeActiveTxt : styles.badgeDoneTxt]}>
-                {STATUS_LABELS[o.status] ?? o.status}
+                {displayStatus === 'READY' && o.orderType === 'PICKUP'
+                  ? 'Готов'
+                  : (STATUS_LABELS[displayStatus] ?? displayStatus)}
               </Text>
             </View>
           </View>
@@ -227,11 +286,12 @@ const styles = StyleSheet.create({
   cardDim: { opacity: 0.4 },
 
   cardTop:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  orderNum:   { color: '#fff', fontSize: 15, fontWeight: '700' },
+  orderNum:   { color: '#fff', fontSize: 15, fontWeight: '700', fontStyle: 'italic' },
   orderItems: { color: 'rgba(255,255,255,0.75)', fontSize: 13, lineHeight: 19, marginBottom: 12 },
   cardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   orderDate:  { color: 'rgba(255,255,255,0.4)', fontSize: 12 },
-  orderTotal: { color: '#fff', fontSize: 15, fontWeight: '700' },
+  orderTotal:    { color: '#fff', fontSize: 15, fontWeight: '700' },
+  orderDiscount: { color: '#8DBB00', fontSize: 12, fontWeight: '600', marginBottom: 4 },
 
   badge:          { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1 },
   badgeActive:    { backgroundColor: 'rgba(141,187,0,0.15)', borderColor: GREEN_DARK },

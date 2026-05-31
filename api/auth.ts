@@ -1,5 +1,16 @@
 import { BASE_URL, baseHeaders } from './config';
 
+export async function updateProfile(name: string, token: string): Promise<{ accessToken: string }> {
+  const res = await fetch(`${BASE_URL}/auth/profile`, {
+    method: 'PATCH',
+    headers: baseHeaders(token),
+    body: JSON.stringify({ name }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'Ошибка обновления профиля');
+  return data;
+}
+
 export interface AuthUser {
   id: string;
   phone: string;

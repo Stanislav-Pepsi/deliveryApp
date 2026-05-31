@@ -1,5 +1,5 @@
 import { CartItem } from '../App';
-import { BASE_URL, CASH_PAYMENT_ID, baseHeaders } from './config';
+import { BASE_URL, baseHeaders } from './config';
 
 export interface ApiOrder {
   id: string;
@@ -9,9 +9,12 @@ export interface ApiOrder {
   paymentType: 'CARD' | 'KASPI' | 'CASH';
   paymentStatus: 'UNPAID' | 'PAID' | 'REFUNDED';
   totalAmount: string;
+  deliveryFee: string | null;
+  promoDiscount: string | null;
+  bonusesSpent: string | null;
+  bonusesEarned: string | null;
   items: { productId: string; name?: string; amount: number; price: number; sizeId?: string }[];
   deliveryAddress: string | null;
-  promoDiscount: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -30,7 +33,9 @@ export async function createOrder(
   comment: string,
   token: string,
   phone: string,
-): Promise<{ id: string }> {
+  bonusesToSpend?: number,
+  promoCode?: string,
+): Promise<{ orderId: string; deliveryFee: number | null; promoDiscount: number | null }> {
   const paymentType = payment === 'kaspi' ? 'CARD' : 'CASH';
   const totalAmount = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
 
@@ -51,13 +56,13 @@ export async function createOrder(
     }),
   };
 
-  if (payment === 'cash') body.cashPaymentTypeId = CASH_PAYMENT_ID;
-
   if (deliveryType === 'delivery' && address) {
     body.deliveryAddress = splitAddress(address);
   }
 
   if (comment) body.comment = comment;
+  if (bonusesToSpend && bonusesToSpend > 0) body.bonusesToSpend = bonusesToSpend;
+  if (promoCode) body.promoCode = promoCode;
 
   const res = await fetch(`${BASE_URL}/orders`, {
     method: 'POST',

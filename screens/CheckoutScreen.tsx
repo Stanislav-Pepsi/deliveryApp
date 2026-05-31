@@ -14,6 +14,7 @@ import {
 import Text from '../components/Text';
 import { CartItem } from '../App';
 import { createOrder } from '../api/orders';
+import { fetchLoyaltyBalance } from '../api/loyalty';
 
 const GREEN = '#8DBB00';
 const GREEN_DARK = '#4a6600';
@@ -22,21 +23,39 @@ const CARD = 'rgba(255,255,255,0.06)';
 const BORDER = 'rgba(255,255,255,0.1)';
 
 interface Props {
-  total: number;
+  subtotal: number;
+  deliveryFeeAmount?: number | null;
   address?: string;
   onAddressPress?: () => void;
   onBack: () => void;
-  onSuccess: (deliveryType: 'delivery' | 'pickup', payment: 'kaspi' | 'cash', orderId: string) => void;
+  onSuccess: (deliveryType: 'delivery' | 'pickup', payment: 'kaspi' | 'cash', orderId: string, bonusesSpent: number, deliveryFee: number, promoDiscount: number) => void;
   authToken: string | null;
   phone: string;
   cartItems: CartItem[];
+  initialBonuses?: number;
+  promoCode?: string;
+  promoDiscount?: number;
+  cashbackPercent?: number | null;
 }
 
-export default function CheckoutScreen({ total, address, onAddressPress, onBack, onSuccess, authToken, phone, cartItems }: Props) {
+export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, onAddressPress, onBack, onSuccess, authToken, phone, cartItems, initialBonuses = 0, promoCode, promoDiscount = 0, cashbackPercent }: Props) {
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
   const [timeType, setTimeType] = useState<'asap' | 'scheduled'>('asap');
   const [payment, setPayment] = useState<'kaspi' | 'cash'>('kaspi');
   const [comment, setComment] = useState('');
+  const [loyaltyBalance, setLoyaltyBalance] = useState(0);
+  const [useBonus, setUseBonus] = useState(initialBonuses > 0);
+
+  useEffect(() => {
+    if (!authToken) return;
+    fetchLoyaltyBalance(authToken).then(b => setLoyaltyBalance(b.balance)).catch(() => {});
+  }, [authToken]);
+
+  const deliveryFee = deliveryType === 'delivery' && deliveryFeeAmount ? deliveryFeeAmount : 0;
+  const total = subtotal + deliveryFee;
+  const bonusesToSpend = useBonus ? loyaltyBalance : 0;
+  const finalTotal = Math.max(0, total - bonusesToSpend - promoDiscount);
+  const estimatedBonuses = cashbackPercent ? Math.floor(subtotal * cashbackPercent / 100) : null;
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -54,8 +73,8 @@ export default function CheckoutScreen({ total, address, onAddressPress, onBack,
     setSubmitting(true);
     setSubmitError('');
     try {
-      const order = await createOrder(cartItems, deliveryType, payment, address ?? '', comment, authToken, phone);
-      onSuccess(deliveryType, payment, order.id);
+      const order = await createOrder(cartItems, deliveryType, payment, address ?? '', comment, authToken, phone, bonusesToSpend || undefined, promoCode);
+      onSuccess(deliveryType, payment, order.orderId, bonusesToSpend, order.deliveryFee ?? deliveryFee, order.promoDiscount ?? promoDiscount);
     } catch (e: any) {
       setSubmitError(e.message || 'Ошибка оформления заказа');
     } finally {
@@ -67,24 +86,13 @@ export default function CheckoutScreen({ total, address, onAddressPress, onBack,
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* Hero header */}
-      <View style={styles.hero}>
-        <Image
-          source={require('../assets/pexels-batuhan-kocabas-123879152-23330916.jpg')}
-          style={styles.heroImg}
-          resizeMode="cover"
-        />
-        <View style={styles.heroDim} />
-        <View style={styles.headerRow}>
-          <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
-            <Ionicons name="chevron-back" size={22} color="#fff" />
-          </TouchableOpacity>
-          <View style={styles.headerCenter}>
-            <Text style={styles.stepText}>ШАГ 2 ИЗ 2</Text>
-            <Text style={styles.headerTitle}>Оформление</Text>
-          </View>
-          <View style={{ width: 42 }} />
-        </View>
+      {/* Header */}
+      <View style={styles.headerRow}>
+        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+          <Ionicons name="chevron-back" size={22} color="#fff" />
+        </TouchableOpacity>
+        <Text style={styles.headerTitle}>Оформление</Text>
+        <View style={{ width: 42 }} />
       </View>
 
       <ScrollView
@@ -153,8 +161,7 @@ export default function CheckoutScreen({ total, address, onAddressPress, onBack,
             <Text style={[styles.timeCardLabel, timeType === 'asap' && styles.timeCardLabelActive]}>
               КАК МОЖНО СКОРЕЕ
             </Text>
-            <Text style={styles.timeCardMain}>~35 мин</Text>
-            <Text style={styles.timeCardSub}>9:45 — 10:20</Text>
+            <Text style={styles.timeCardMain}>~60 мин</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.timeCard, timeType === 'scheduled' && styles.timeCardActive]}
@@ -202,11 +209,12 @@ export default function CheckoutScreen({ total, address, onAddressPress, onBack,
           </TouchableOpacity>
         </View>
 
+
         {/* Comment */}
         <Text style={styles.sectionLabel}>КОММЕНТАРИЙ</Text>
         <TextInput
           style={styles.commentInput}
-          placeholder="Например, не звонить в дверь..."
+          placeholder="Например, не звонить в дверь"
           placeholderTextColor="rgba(255,255,255,0.25)"
           value={comment}
           onChangeText={setComment}
@@ -220,9 +228,17 @@ export default function CheckoutScreen({ total, address, onAddressPress, onBack,
       {/* Bottom bar */}
       <View style={styles.bottomBar}>
         {!!submitError && <Text style={styles.errorTxt}>{submitError}</Text>}
+        {!!estimatedBonuses && estimatedBonuses > 0 && (
+          <View style={styles.bonusAccrualRow}>
+            <Ionicons name="star" size={13} color="#8DBB00" />
+            <Text style={styles.bonusAccrualTxt}>
+              Начислим {estimatedBonuses.toLocaleString('ru-RU')} бонусов после заказа
+            </Text>
+          </View>
+        )}
         <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>Итого с доставкой</Text>
-          <Text style={styles.totalVal}>{total.toLocaleString('ru-RU')} ₸</Text>
+          <Text style={styles.totalLabel}>Итого</Text>
+          <Text style={styles.totalVal}>{finalTotal.toLocaleString('ru-RU')} ₸</Text>
         </View>
         <TouchableOpacity
           style={[styles.payBtn, submitting && { opacity: 0.6 }]}
@@ -243,13 +259,11 @@ export default function CheckoutScreen({ total, address, onAddressPress, onBack,
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
 
-  hero: { height: 120, position: 'relative' },
-  heroImg: { width: '100%', height: '100%' },
-  heroDim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.65)' },
   headerRow: {
-    ...StyleSheet.absoluteFillObject,
     flexDirection: 'row',
-    alignItems: 'flex-end',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 56,
     paddingBottom: 16,
     paddingHorizontal: 20,
   },
@@ -355,6 +369,23 @@ const styles = StyleSheet.create({
   payName: { color: '#fff', fontWeight: '700', fontSize: 14, marginBottom: 3 },
   paySub: { color: 'rgba(255,255,255,0.4)', fontSize: 11 },
 
+  bonusCard: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: CARD, borderRadius: 14,
+    borderWidth: 1.5, borderColor: BORDER, padding: 14,
+  },
+  bonusCardActive: { borderColor: '#8DBB00', backgroundColor: 'rgba(141,187,0,0.08)' },
+  bonusTitle:  { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: 3 },
+  bonusSub:    { color: 'rgba(255,255,255,0.4)', fontSize: 12 },
+  bonusDeduct: { color: '#8DBB00', fontSize: 12, marginTop: 4, fontWeight: '600' },
+  bonusToggle: {
+    width: 36, height: 36, borderRadius: 10,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center', justifyContent: 'center', marginLeft: 12,
+  },
+  bonusToggleActive: { backgroundColor: '#4a6600' },
+  totalBonus: { color: '#8DBB00', fontSize: 12, fontWeight: '600', marginBottom: 2 },
+
   commentInput: {
     backgroundColor: CARD,
     borderRadius: 14,
@@ -386,6 +417,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  bonusAccrualRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  bonusAccrualTxt: { color: '#8DBB00', fontSize: 12, fontWeight: '600', flex: 1 },
   totalLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 13 },
   totalVal: { color: '#fff', fontSize: 17, fontWeight: '800' },
   payBtn: {

@@ -1,11 +1,12 @@
-﻿import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   Dimensions,
   Image,
-  ImageBackground,
+  Keyboard,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -17,16 +18,15 @@ import Text from '../components/Text';
 
 const { width: W } = Dimensions.get('window');
 
-const GREEN = '#8DBB00';
+const GREEN = '#E8242E';
 const PROMO_W = W - 40;
 const PROMO_STEP = PROMO_W + 12;
 
-const BORDER = 'rgba(255,255,255,0.0)';
-const GLASS_BG = 'rgba(10,18,8,0.42)';
+const GLASS_BG = 'rgba(255,255,255,0.06)';
 
 const PROMOS = [
-  { id: '1', tag: 'ПОПРОБУЙТЕ НОВОЕ', title: 'Сет «Базилик»', sub: '–15% до 31 марта', blob: 'rgba(80,160,20,0.35)', img: null },
-  { id: '2', tag: 'ЗАВТРАКИ', title: 'Кофе на своё', sub: 'Каждый день с 8:00', blob: 'rgba(20,80,160,0.35)', img: null },
+  { id: '1', tag: 'ПОПРОБУЙТЕ НОВОЕ', title: 'Сет «Базилик»', sub: '–15% до 31 марта', blob: 'rgba(200,30,30,0.4)', img: null },
+  { id: '2', tag: 'ЗАВТРАКИ', title: 'Кофе на своё', sub: 'Каждый день с 8:00', blob: 'rgba(140,20,20,0.35)', img: null },
   { id: '3', tag: '', title: '', sub: '', blob: 'transparent', img: require('../assets/promo_350x160.jpg') },
 ];
 const PROMO_DATA = [...PROMOS, PROMOS[0]];
@@ -38,8 +38,25 @@ const STATUS_STEP: Record<string, number> = {
 const STEPS_DELIVERY = ['Принят', 'Готовится', 'Передан', 'Доставлен'];
 const STEPS_PICKUP   = ['Принят', 'Готовится', 'Готов', 'Выдан'];
 
+type StepIcon = { lib: 'ion'; name: string } | { lib: 'mci'; name: string };
+const ICONS_DELIVERY: StepIcon[] = [
+  { lib: 'ion', name: 'receipt-outline' },
+  { lib: 'mci', name: 'pot-steam-outline' },
+  { lib: 'ion', name: 'bicycle-outline' },
+  { lib: 'ion', name: 'home-outline' },
+];
+const ICONS_PICKUP: StepIcon[] = [
+  { lib: 'ion', name: 'receipt-outline' },
+  { lib: 'mci', name: 'pot-steam-outline' },
+  { lib: 'ion', name: 'bag-outline' },
+  { lib: 'mci', name: 'food-outline' },
+];
+
 import { fetchMenu } from '../api/menu';
 import { ApiOrder, fetchOrders } from '../api/orders';
+import { io } from 'socket.io-client';
+
+const WS_URL = 'https://nonvirulently-nonpursuant-georgie.ngrok-free.dev';
 import { OrderSummary } from './OrdersScreen';
 
 const NAV = [
@@ -50,6 +67,7 @@ const NAV = [
 ];
 
 import { DishData } from '../App';
+import { RestaurantInfo } from '../api/restaurant';
 
 interface Props {
   onDishPress: (dish: DishData) => void;
@@ -57,19 +75,42 @@ interface Props {
   onReservationPress: () => void;
   onProfilePress: () => void;
   onOrderPress: (summary: OrderSummary) => void;
+  onAddressPress: () => void;
   cartCount: number;
   address?: string;
   authToken?: string | null;
   onDishesLoaded?: (dishes: DishData[]) => void;
+  restaurantInfo?: RestaurantInfo | null;
+  favorites?: Set<string>;
+  onToggleFavorite?: (id: string) => void;
 }
 
-export default function HomeScreen({ onDishPress, onCartPress, onReservationPress, onProfilePress, onOrderPress, cartCount, address, authToken, onDishesLoaded }: Props) {
+export default function HomeScreen({ onDishPress, onCartPress, onReservationPress, onProfilePress, onOrderPress, onAddressPress, cartCount, address, authToken, onDishesLoaded, restaurantInfo, favorites: favProp, onToggleFavorite: toggleFavProp }: Props) {
   const [search, setSearch] = useState('');
+  const [searchOpen, setSearchOpen] = useState(false);
   const [activeCat, setActiveCat] = useState('all');
   const [activeNav, setActiveNav] = useState('home');
   const [promoIdx, setPromoIdx] = useState(0);
   const promoRef = useRef<ScrollView>(null);
   const scrollPos = useRef(0);
+  const { height: SCREEN_H } = Dimensions.get('window');
+  const slideAnim = useRef(new Animated.Value(SCREEN_H)).current;
+  const searchRef = useRef<TextInput>(null);
+
+  const openSearch = () => {
+    setSearchOpen(true);
+    Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, bounciness: 4, speed: 14 }).start(() => {
+      searchRef.current?.focus();
+    });
+  };
+
+  const closeSearch = () => {
+    Keyboard.dismiss();
+    Animated.timing(slideAnim, { toValue: SCREEN_H, duration: 260, useNativeDriver: true }).start(() => {
+      setSearchOpen(false);
+      setSearch('');
+    });
+  };
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -90,6 +131,8 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
   const [dishes, setDishes] = useState<DishData[]>([]);
   const [dishLoading, setDishLoading] = useState(true);
   const [activeOrders, setActiveOrders] = useState<ApiOrder[]>([]);
+  const favorites = favProp ?? new Set<string>();
+  const toggleFavorite = toggleFavProp ?? (() => {});
 
   useEffect(() => {
     if (!authToken) return;
@@ -106,70 +149,78 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
       .catch(() => {});
   }, [authToken]);
 
+  useEffect(() => {
+    if (!authToken) return;
+    const interval = setInterval(() => {
+      fetchOrders(authToken)
+        .then(all => setActiveOrders(all.filter(o => ACTIVE_STATUSES.has(o.status))))
+        .catch(() => {});
+    }, 15000);
+    return () => clearInterval(interval);
+  }, [authToken]);
+
+  useEffect(() => {
+    if (!authToken) return;
+    const socket = io(`${WS_URL}/client`, {
+      auth: { token: `Bearer ${authToken}` },
+      transports: ['websocket'],
+    });
+    socket.on('order:status_changed', (payload: { orderId: string; status: string }) => {
+      setActiveOrders(prev => {
+        const updated = prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o);
+        return updated.filter(o => ACTIVE_STATUSES.has(o.status));
+      });
+    });
+    return () => { socket.disconnect(); };
+  }, [authToken]);
+
   const catIds = ['all', ...Array.from(new Set(dishes.map(d => d.category).filter(Boolean)))];
   const dynCats = catIds.map(id => ({
     id,
     label: id === 'all' ? 'ВСЕ' : id,
     count: id === 'all' ? dishes.length : dishes.filter(d => d.category === id).length,
   }));
-  const filtered = dishes.filter(d => {
-    const q = search.toLowerCase().trim();
-    if (q && !d.name.toLowerCase().includes(q) && !d.desc.toLowerCase().includes(q)) return false;
-    if (activeCat !== 'all' && d.category !== activeCat) return false;
-    return true;
-  });
+  const filtered = dishes
+    .filter(d => {
+      const q = search.toLowerCase().trim();
+      if (q && !d.name.toLowerCase().includes(q) && !d.desc.toLowerCase().includes(q)) return false;
+      if (activeCat !== 'all' && d.category !== activeCat) return false;
+      return true;
+    })
+    .sort((a, b) => (favorites.has(b.id) ? 1 : 0) - (favorites.has(a.id) ? 1 : 0));
 
   return (
-    <ImageBackground
-      source={require('../assets/pexels-batuhan-kocabas-123879152-23330916.jpg')}
-      style={styles.root}
-      resizeMode="cover"
-    >
-      <View style={styles.dim} />
+    <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scroll}>
 
         {/* Header */}
         <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <BlurView intensity={100} tint="dark" style={styles.logoBox}>
-              <Text style={styles.logoTxt}>ba</Text>
-              <Text style={styles.logoGreen}>silic</Text>
-            </BlurView>
-            <View>
-              <Text style={styles.restaurantName}>Базилик</Text>
-              <Text style={styles.restaurantAddr}>ТВЕРСКАЯ, 12 · 0.4 КМ</Text>
-            </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.restaurantName}>{restaurantInfo?.name ?? 'Базилик'}</Text>
+            <TouchableOpacity style={styles.addrRow} onPress={onAddressPress} activeOpacity={0.7}>
+              <Ionicons name="location-outline" size={13} color={GREEN} />
+              <Text style={styles.addrTxt} numberOfLines={1}>
+                {address || 'Укажите адрес доставки'}
+              </Text>
+            </TouchableOpacity>
           </View>
+          <TouchableOpacity style={styles.searchBtn} onPress={openSearch} activeOpacity={0.75}>
+            <Ionicons name="search-outline" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
         </View>
-
-        {/* Delivery address */}
-        {!!address && (
-          <BlurView intensity={100} tint="dark" style={styles.addrBar}>
-            <Ionicons name="location-outline" size={14} color={GREEN} />
-            <Text style={styles.addrTxt} numberOfLines={1}>{address}</Text>
-          </BlurView>
-        )}
-
-        {/* Search */}
-        <BlurView intensity={100} tint="dark" style={styles.searchBox}>
-          <Ionicons name="search-outline" size={18} color="rgba(255,255,255,0.45)" />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Найти блюдо или ингредиент"
-            placeholderTextColor="rgba(255,255,255,0.4)"
-            value={search}
-            onChangeText={setSearch}
-            underlineColorAndroid="transparent"
-          />
-        </BlurView>
 
         {/* Active orders */}
         {activeOrders.map(o => {
           const isDelivery = o.orderType === 'DELIVERY';
           const steps = isDelivery ? STEPS_DELIVERY : STEPS_PICKUP;
-          const currentStep = STATUS_STEP[o.status] ?? 0;
+          const icons = isDelivery ? ICONS_DELIVERY : ICONS_PICKUP;
+          const isCardPayment = o.paymentType === 'CARD' || o.paymentType === 'KASPI';
+          const displayStatus = (o.status === 'CREATED' && isCardPayment) ? 'IN_PROGRESS' : o.status;
+          const currentStep = (!isDelivery && displayStatus === 'READY')
+            ? 2
+            : (STATUS_STEP[displayStatus] ?? 0);
           let addressText = '';
           if (o.deliveryAddress) {
             try { const p = JSON.parse(o.deliveryAddress); addressText = [p.streetName, p.house].filter(Boolean).join(', '); }
@@ -179,8 +230,11 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
           const summary: OrderSummary = {
             id: o.id,
             iikoNumber: o.iikoNumber,
-            status: o.status,
+            status: displayStatus,
             total,
+            bonusesSpent: o.bonusesSpent ? parseFloat(o.bonusesSpent) : null,
+            deliveryFee: o.deliveryFee ? parseFloat(o.deliveryFee) : null,
+            promoDiscount: o.promoDiscount ? parseFloat(o.promoDiscount) : null,
             deliveryType: isDelivery ? 'delivery' : 'pickup',
             payment: o.paymentType === 'CASH' ? 'cash' : 'kaspi',
             address: addressText,
@@ -188,11 +242,11 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
           };
           return (
             <TouchableOpacity key={o.id} activeOpacity={0.85} onPress={() => onOrderPress(summary)} style={styles.orderCardWrap}>
-              <BlurView intensity={100} tint="dark" style={styles.orderCard}>
+              <View style={styles.orderCard}>
                 <View style={styles.orderHeader}>
                   <Text style={styles.orderTitle}>Активный заказ</Text>
                   <Text style={styles.orderNum}>
-                    {o.iikoNumber != null ? `№${o.iikoNumber}` : '#...'}
+                    {o.iikoNumber != null ? `#${o.iikoNumber}` : '#...'}
                   </Text>
                 </View>
                 <View style={styles.stepperRow}>
@@ -204,7 +258,12 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
                       <View key={step} style={styles.stepCol}>
                         <View style={styles.dotRow}>
                           <View style={[styles.stepLine, isFirst && styles.stepLineInvisible, done && !isFirst && styles.stepLineDone]} />
-                          <View style={[styles.stepDot, done && styles.stepDotDone]} />
+                          <View style={[styles.stepDot, done && styles.stepDotDone]}>
+                            {icons[i].lib === 'mci'
+                              ? <MaterialCommunityIcons name={icons[i].name as any} size={10} color={done ? '#fff' : 'rgba(255,255,255,0.3)'} />
+                              : <Ionicons name={icons[i].name as any} size={10} color={done ? '#fff' : 'rgba(255,255,255,0.3)'} />
+                            }
+                          </View>
                           <View style={[styles.stepLine, isLast && styles.stepLineInvisible, i < currentStep && styles.stepLineDone]} />
                         </View>
                         <Text style={[styles.stepLabel, done && styles.stepLabelDone]}>{step}</Text>
@@ -212,7 +271,7 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
                     );
                   })}
                 </View>
-              </BlurView>
+              </View>
             </TouchableOpacity>
           );
         })}
@@ -236,7 +295,7 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
           }}
         >
           {PROMO_DATA.map((p, idx) => (
-            <BlurView key={idx} intensity={100} tint="dark" style={styles.promoCard}>
+            <View key={idx} style={styles.promoCard}>
               {p.img
                 ? <Image source={p.img} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
                 : (
@@ -248,7 +307,7 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
                   </>
                 )
               }
-            </BlurView>
+            </View>
           ))}
         </ScrollView>
 
@@ -268,18 +327,14 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
           >
             {dynCats.map(c => (
               <TouchableOpacity key={c.id} onPress={() => setActiveCat(c.id)} activeOpacity={0.75}>
-                <BlurView
-                  intensity={activeCat === c.id ? 100 : 95}
-                  tint="dark"
-                  style={[styles.catChip, activeCat === c.id && styles.catChipActive]}
-                >
+                <View style={[styles.catChip, activeCat === c.id && styles.catChipActive]}>
                   <Text style={[styles.catLabel, activeCat === c.id && styles.catLabelActive]}>
                     {c.label}
                   </Text>
                   <Text style={[styles.catCount, activeCat === c.id && styles.catCountActive]}>
                     {' '}{c.count}
                   </Text>
-                </BlurView>
+                </View>
               </TouchableOpacity>
             ))}
           </ScrollView>
@@ -290,24 +345,41 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
           <ActivityIndicator color={GREEN} size="large" style={{ marginTop: 40 }} />
         ) : (
           <View style={styles.grid}>
-            {filtered.map((d) => (
-              <TouchableOpacity key={d.id} activeOpacity={0.85} onPress={() => onDishPress(d)}>
-                <BlurView intensity={100} tint="dark" style={styles.dishCard}>
-                  {d.img
-                    ? <Image source={d.img} style={styles.dishImg} resizeMode="cover" />
-                    : <View style={[styles.dishImg, { backgroundColor: 'rgba(255,255,255,0.04)' }]} />
-                  }
-                  <View style={styles.dishBody}>
-                    <Text style={styles.dishName}>{d.name}</Text>
-                    <Text style={styles.dishWeight}>{d.weight}</Text>
-                    <Text style={styles.dishDesc} numberOfLines={3}>{d.desc}</Text>
-                    <View style={styles.priceBtn}>
-                      <Text style={styles.priceTxt}>{d.price}</Text>
+            {filtered.map((d) => {
+              const isFav = favorites.has(d.id);
+              return (
+                <TouchableOpacity key={d.id} activeOpacity={0.85} onPress={() => onDishPress(d)}>
+                  <View style={styles.dishCard}>
+                    <View>
+                      {d.img
+                        ? <Image source={d.img} style={styles.dishImg} resizeMode="cover" />
+                        : <View style={[styles.dishImg, { backgroundColor: 'rgba(255,255,255,0.04)' }]} />
+                      }
+                      <TouchableOpacity
+                        style={styles.heartBtn}
+                        onPress={() => toggleFavorite(d.id)}
+                        activeOpacity={0.75}
+                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                      >
+                        <Ionicons
+                          name={isFav ? 'heart' : 'heart-outline'}
+                          size={22}
+                          color={isFav ? '#e05252' : 'rgba(255,255,255,0.6)'}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={styles.dishBody}>
+                      <Text style={styles.dishName}>{d.name}</Text>
+                      <Text style={styles.dishWeight}>{d.weight}</Text>
+                      <Text style={styles.dishDesc} numberOfLines={3}>{d.desc}</Text>
+                      <View style={styles.priceBtn}>
+                        <Text style={styles.priceTxt}>{d.price}</Text>
+                      </View>
                     </View>
                   </View>
-                </BlurView>
-              </TouchableOpacity>
-            ))}
+                </TouchableOpacity>
+              );
+            })}
           </View>
         )}
 
@@ -349,13 +421,67 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
         })}
       </BlurView>
 
-    </ImageBackground>
+      {/* Search sheet */}
+      {searchOpen && (
+        <Animated.View style={[styles.searchSheet, { transform: [{ translateY: slideAnim }] }]}>
+          <StatusBar barStyle="light-content" />
+          <View style={styles.sheetHeader}>
+            <View style={styles.sheetInputRow}>
+              <Ionicons name="search-outline" size={16} color="rgba(255,255,255,0.45)" style={{ marginRight: 8 }} />
+              <TextInput
+                ref={searchRef}
+                style={styles.sheetInput}
+                placeholder="Блюдо или ингредиент"
+                placeholderTextColor="rgba(0,0,0,0.35)"
+                value={search}
+                onChangeText={setSearch}
+                underlineColorAndroid="transparent"
+                returnKeyType="search"
+                autoFocus
+              />
+              {search.length > 0 && (
+                <TouchableOpacity onPress={() => setSearch('')} activeOpacity={0.7}>
+                  <Ionicons name="close-circle" size={16} color="rgba(0,0,0,0.3)" />
+                </TouchableOpacity>
+              )}
+            </View>
+            <TouchableOpacity style={styles.sheetCancelBtn} onPress={closeSearch} activeOpacity={0.7}>
+              <Text style={styles.sheetCancelTxt}>Отмена</Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.sheetResults}>
+            {filtered.length === 0 && search.length > 0 && (
+              <Text style={styles.sheetEmpty}>Ничего не найдено</Text>
+            )}
+            {filtered.map(dish => (
+              <TouchableOpacity
+                key={dish.id}
+                style={styles.sheetDishRow}
+                activeOpacity={0.75}
+                onPress={() => { closeSearch(); onDishPress(dish); }}
+              >
+                {dish.img
+                  ? <Image source={dish.img} style={styles.sheetDishImg} resizeMode="cover" />
+                  : <View style={[styles.sheetDishImg, { backgroundColor: 'rgba(255,255,255,0.08)' }]} />
+                }
+                <View style={styles.sheetDishInfo}>
+                  <Text style={styles.sheetDishName} numberOfLines={1}>{dish.name}</Text>
+                  <Text style={styles.sheetDishMeta}>{dish.weight} · {dish.price}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={16} color="rgba(0,0,0,0.5)" />
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </Animated.View>
+      )}
+
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  dim: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.78)' },
+  root: { flex: 1, backgroundColor: '#0f0707' },
   scroll: { paddingBottom: 140 },
 
   header: {
@@ -366,26 +492,13 @@ const styles = StyleSheet.create({
     paddingTop: 56,
     paddingBottom: 16,
   },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  logoBox: {
-    flexDirection: 'row',
-    borderRadius: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 6,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: GLASS_BG,
+  restaurantName: { color: '#FFFFFF', fontWeight: '800', fontSize: 22 },
+  addrRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 4,
   },
-  logoTxt: { color: '#fff', fontWeight: '700', fontSize: 13 },
-  logoGreen: { color: GREEN, fontWeight: '700', fontSize: 13 },
-  restaurantName: { color: '#fff', fontWeight: '700', fontSize: 17 },
-  restaurantAddr: {
-    color: 'rgba(255,255,255,0.45)',
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    marginTop: 1,
+  addrTxt: {
+    color: 'rgba(255,255,255,0.6)', fontSize: 12,
+    fontWeight: '500', flex: 1,
   },
   bellBtn: {
     width: 44,
@@ -394,8 +507,6 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: BORDER,
     backgroundColor: GLASS_BG,
   },
 
@@ -409,28 +520,17 @@ const styles = StyleSheet.create({
     paddingVertical: 9,
     gap: 10,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: BORDER,
     backgroundColor: GLASS_BG,
   },
-  searchInput: { flex: 1, color: '#fff', fontSize: 15 },
+  searchInput: { flex: 1, color: '#FFFFFF', fontSize: 15 },
 
-  addrBar: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 14, paddingVertical: 8,
-    borderRadius: 12, marginHorizontal: 20, marginBottom: 8,
-    overflow: 'hidden',
-  },
-  addrTxt: { color: 'rgba(255,255,255,0.75)', fontSize: 12, flex: 1 },
 
   orderCardWrap: { marginHorizontal: 20, marginBottom: 16 },
   orderCard: {
     borderRadius: 16,
     padding: 16,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: 'rgba(141,187,0,0.25)',
-    backgroundColor: GLASS_BG,
+    backgroundColor: 'rgba(232,36,46,0.06)',
   },
   orderHeader: {
     flexDirection: 'row',
@@ -438,14 +538,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 16,
   },
-  orderTitle: { color: '#fff', fontWeight: '700', fontSize: 15 },
-  orderNum: { color: GREEN, fontWeight: '600', fontSize: 14 },
+  orderTitle: { color: '#FFFFFF', fontWeight: '700', fontSize: 15 },
+  orderNum: { color: GREEN, fontWeight: '600', fontSize: 14, fontStyle: 'italic' },
   stepperRow: { flexDirection: 'row' },
   stepCol: { flex: 1, alignItems: 'center' },
   dotRow: { flexDirection: 'row', alignItems: 'center', width: '100%' },
-  stepDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: 'rgba(255,255,255,0.2)' },
+  stepDot: { width: 22, height: 22, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.12)', alignItems: 'center', justifyContent: 'center' },
   stepDotDone: { backgroundColor: GREEN },
-  stepLine: { flex: 1, height: 2, backgroundColor: 'rgba(255,255,255,0.15)' },
+  stepLine: { flex: 1, height: 2, backgroundColor: 'rgba(255,255,255,0.12)' },
   stepLineInvisible: { backgroundColor: 'transparent' },
   stepLineDone: { backgroundColor: GREEN },
   stepLabel: {
@@ -461,8 +561,6 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     padding: 20,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: BORDER,
     backgroundColor: GLASS_BG,
   },
   promoBlob: {
@@ -474,7 +572,7 @@ const styles = StyleSheet.create({
     bottom: -60,
   },
   promoTag: { color: GREEN, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 14 },
-  promoTitle: { color: '#fff', fontSize: 24, fontWeight: '800', marginBottom: 4 },
+  promoTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', marginBottom: 4 },
   promoSub: { color: 'rgba(255,255,255,0.7)', fontSize: 15, fontWeight: '500' },
 
   promoDots: {
@@ -484,48 +582,49 @@ const styles = StyleSheet.create({
     marginTop: 12,
     marginBottom: 16,
   },
-  promoDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.2)' },
+  promoDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.12)' },
   promoDotActive: { backgroundColor: GREEN, width: 18 },
 
   catsContent: { paddingHorizontal: 20, gap: 8, paddingBottom: 16 },
   catChip: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 9,
     borderRadius: 30,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: GLASS_BG,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  catChipActive: { borderColor: 'rgba(141,187,0,0.4)' },
-  catLabel: { color: 'rgba(255,255,255,0.65)', fontWeight: '600', fontSize: 14 },
-  catLabelActive: { color: '#fff' },
-  catCount: { color: 'rgba(255,255,255,0.3)', fontWeight: '500', fontSize: 14 },
-  catCountActive: { color: GREEN },
+  catChipActive: { backgroundColor: '#4b4141' },
+  catLabel: { color: 'rgba(255,255,255,0.6)', fontWeight: '600', fontSize: 13 },
+  catLabelActive: { color: '#FFFFFF' },
+  catCount: { color: 'rgba(255,255,255,0.3)', fontWeight: '500', fontSize: 13 },
+  catCountActive: { color: 'rgba(255,255,255,0.7)' },
 
   grid: { flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 12 },
   dishCard: {
     width: (W - 52) / 2,
-    borderRadius: 16,
+    borderRadius: 24,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: GLASS_BG,
+    backgroundColor: '#191414',
   },
   dishImg: { width: '100%', height: 130 },
+  heartBtn: {
+    position: 'absolute', top: 8, right: 8,
+    width: 38, height: 38, borderRadius: 19,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center', justifyContent: 'center',
+  },
   dishBody: { padding: 12 },
-  dishName: { color: '#fff', fontWeight: '700', fontSize: 14, marginBottom: 2 },
+  dishName: { color: '#FFFFFF', fontWeight: '700', fontSize: 14, marginBottom: 2 },
   dishWeight: { color: 'rgba(255,255,255,0.4)', fontSize: 12, marginBottom: 6 },
   dishDesc: { color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 16, marginBottom: 10 },
   priceBtn: {
-    backgroundColor: GREEN,
+    backgroundColor: '#4b4141',
     borderRadius: 20,
     paddingVertical: 8,
     paddingHorizontal: 12,
     alignSelf: 'flex-start',
   },
-  priceTxt: { color: '#fff', fontWeight: '700', fontSize: 13 },
+  priceTxt: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
 
   bottomNav: {
     position: 'absolute',
@@ -537,10 +636,8 @@ const styles = StyleSheet.create({
     paddingTop: 12,
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
-    borderTopWidth: 1,
-    borderTopColor: BORDER,
     overflow: 'hidden',
-    backgroundColor: GLASS_BG,
+    backgroundColor: '#191414',
   },
   navTab: { flex: 1, alignItems: 'center', gap: 4 },
   navLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 11 },
@@ -557,5 +654,89 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 4,
   },
-  badgeTxt: { color: '#fff', fontSize: 10, fontWeight: '700' },
+  badgeTxt: { color: '#FFFFFF', fontSize: 10, fontWeight: '700' },
+
+  searchBtn: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.07)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 10,
+  },
+
+  searchSheet: {
+    position: 'absolute',
+    top: 0, bottom: 0, left: 0, right: 0,
+    backgroundColor: '#0D0D0D',
+    zIndex: 11,
+  },
+
+  sheetHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 56,
+    paddingHorizontal: 20,
+    paddingBottom: 12,
+    gap: 12,
+  },
+
+  sheetHandle: {
+    width: 36, height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(0,0,0,0.15)',
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+
+  sheetInputRow: {
+    flex: 1,
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#161616',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+
+  sheetInput: {
+    flex: 1, fontSize: 14, color: '#FFFFFF',
+  },
+
+  sheetCancelBtn: {
+    paddingVertical: 8,
+  },
+
+  sheetCancelTxt: {
+    color: GREEN, fontSize: 15, fontWeight: '600',
+  },
+
+  sheetResults: { paddingHorizontal: 20, paddingBottom: 40 },
+
+  sheetEmpty: {
+    color: 'rgba(0,0,0,0.35)', fontSize: 14,
+    textAlign: 'center', marginTop: 40,
+  },
+
+  sheetDishRow: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: '#161616',
+    borderRadius: 14, padding: 10,
+    marginBottom: 8, gap: 12,
+  },
+
+  sheetDishImg: {
+    width: 52, height: 52, borderRadius: 10,
+  },
+
+  sheetDishInfo: { flex: 1 },
+
+  sheetDishName: { color: '#FFFFFF', fontSize: 14, fontWeight: '600', marginBottom: 3 },
+  sheetDishMeta: { color: 'rgba(255,255,255,0.45)', fontSize: 12 },
 });

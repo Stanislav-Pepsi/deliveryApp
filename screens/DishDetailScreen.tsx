@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
 import {
@@ -6,13 +6,14 @@ import {
   BackHandler,
   Dimensions,
   Image,
+  ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
-import { DishData } from '../App';
+import Text from '../components/Text';
+import { CartItem, DishData, SelectedExtra } from '../App';
 
 const { width: W, height: H } = Dimensions.get('window');
 const GREEN = '#8DBB00';
@@ -21,29 +22,16 @@ const BG = '#0c0f0a';
 const SHEET_H = 420;
 const BOTTOM_BAR_H = 100;
 
-const SIZES = [
-  { key: 's', sublabel: 'Маленькая', delta: '–300 ₸' },
-  { key: 'm', sublabel: 'Стандарт',  delta: '+0 ₸'   },
-  { key: 'l', sublabel: 'Большая',   delta: '+600 ₸'  },
-];
-
-const EXTRAS = [
-  { key: 'pesto',    label: 'Доп. соус песто', price: '+300 ₸' },
-  { key: 'parmesan', label: 'Пармезан 24м',    price: '+450 ₸' },
-  { key: 'pine',     label: 'Кедровые орехи',  price: '+350 ₸' },
-  { key: 'bread',    label: 'Хлеб фокаччо',    price: '+200 ₸' },
-  { key: 'egg',      label: 'Яйцо пашот',      price: '+150 ₸' },
-];
-
 interface Props {
   dish: DishData;
   onBack: () => void;
-  onAddToCart: (item: { dish: DishData; qty: number; size: 's'|'m'|'l'; extras: string[] }) => void;
+  onAddToCart: (item: CartItem) => void;
 }
 
 export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
-  const [selectedSize, setSelectedSize] = useState('m');
-  const [selectedExtras, setSelectedExtras] = useState<string[]>(['pesto', 'pine']);
+  const defaultIdx = Math.max(0, dish.sizes.findIndex(s => s.isDefault));
+  const [selectedSizeIdx, setSelectedSizeIdx] = useState(defaultIdx);
+  const [selectedModifiers, setSelectedModifiers] = useState<Record<string, boolean>>({});
   const [qty, setQty] = useState(1);
 
   const sheetY = useRef(new Animated.Value(SHEET_H)).current;
@@ -62,11 +50,7 @@ export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
   };
 
   const touchStartY = useRef(0);
-
-  const onTouchStart = (e: any) => {
-    touchStartY.current = e.nativeEvent.pageY;
-  };
-
+  const onTouchStart = (e: any) => { touchStartY.current = e.nativeEvent.pageY; };
   const onTouchEnd = (e: any) => {
     const dy = e.nativeEvent.pageY - touchStartY.current;
     if (dy < -30) showSheet();
@@ -82,18 +66,33 @@ export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
     return () => sub.remove();
   }, [onBack]);
 
-  const basePrice = parseInt(dish.price.replace(/\D/g, ''), 10);
-  const sizeDelta = selectedSize === 's' ? -300 : selectedSize === 'l' ? 600 : 0;
-  const extrasDelta = selectedExtras.reduce((sum, key) => {
-    const e = EXTRAS.find(x => x.key === key);
-    return sum + (e ? parseInt(e.price.replace(/\D/g, ''), 10) : 0);
-  }, 0);
-  const total = (basePrice + sizeDelta + extrasDelta) * qty;
+  const hasMultipleSizes = dish.sizes.length > 1;
+  const currentSize = dish.sizes[selectedSizeIdx] ?? dish.sizes[0];
+  const modifierGroups = currentSize?.modifierGroups ?? [];
+  const hasModifiers = modifierGroups.some(g => g.modifiers.length > 0);
 
-  const toggleExtra = (key: string) =>
-    setSelectedExtras(prev =>
-      prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]
-    );
+  const toggleModifier = (id: string) =>
+    setSelectedModifiers(prev => ({ ...prev, [id]: !prev[id] }));
+
+  const selectedExtrasList: SelectedExtra[] = modifierGroups
+    .flatMap(g => g.modifiers.map(m => ({ ...m, groupId: g.groupId })))
+    .filter(m => selectedModifiers[m.id])
+    .map(m => ({ id: m.id, name: m.name, price: m.price, groupId: m.groupId }));
+
+  const modifiersPrice = selectedExtrasList.reduce((s, e) => s + e.price, 0);
+  const unitPrice = (currentSize?.price ?? 0) + modifiersPrice;
+  const total = unitPrice * qty;
+
+  const handleAddToCart = () => {
+    onAddToCart({
+      dish,
+      qty,
+      size: currentSize?.sizeId ?? '',
+      sizeName: hasMultipleSizes ? (currentSize?.sizeName ?? '') : '',
+      unitPrice,
+      extras: selectedExtrasList,
+    });
+  };
 
   return (
     <View style={styles.root} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
@@ -101,7 +100,10 @@ export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
 
       {/* Hero */}
       <View style={styles.hero}>
-        <Image source={dish.img} style={styles.heroImg} resizeMode="cover" />
+        {dish.img
+          ? <Image source={dish.img} style={styles.heroImg} resizeMode="cover" />
+          : <View style={[styles.heroImg, { backgroundColor: '#1a2010' }]} />
+        }
         <LinearGradient
           colors={[
             'rgba(12,15,10,0)',
@@ -120,74 +122,98 @@ export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
         </TouchableOpacity>
 
         <View style={styles.metaBadges}>
-          <View style={styles.badge}>
-            <Text style={styles.badgeTxt}>{dish.weight}</Text>
-          </View>
-          <View style={styles.badge}>
-            <Ionicons name="flash-outline" size={10} color="rgba(255,255,255,0.5)" />
-            <Text style={styles.badgeTxt}> {dish.calories} ккал</Text>
-          </View>
+          {!!currentSize?.portionWeightGrams && (
+            <View style={styles.badge}>
+              <Text style={styles.badgeTxt}>{currentSize.portionWeightGrams} г</Text>
+            </View>
+          )}
+          {!!currentSize?.energy && (
+            <View style={styles.badge}>
+              <Ionicons name="flash-outline" size={10} color="rgba(255,255,255,0.5)" />
+              <Text style={styles.badgeTxt}> {currentSize.energy} ккал</Text>
+            </View>
+          )}
         </View>
       </View>
 
-      {/* Fixed content — свайп вниз открывает добавки, вверх — закрывает */}
+      {/* Fixed content */}
       <View style={styles.content}>
         <Text style={styles.title}>{dish.name}</Text>
-        <Text style={styles.desc}>{dish.desc}</Text>
+        {!!dish.desc && <Text style={styles.desc}>{dish.desc}</Text>}
 
-        <Text style={styles.sectionLabel}>РАЗМЕР</Text>
-        <View style={styles.sizes}>
-          {SIZES.map(s => (
-            <TouchableOpacity
-              key={s.key}
-              style={[styles.sizeCard, selectedSize === s.key && styles.sizeCardActive]}
-              onPress={() => setSelectedSize(s.key)}
-              activeOpacity={0.8}
-            >
-              <Text style={[styles.sizeSub, selectedSize === s.key && styles.sizeSubActive]}>
-                {s.sublabel}
-              </Text>
-              <Text style={[styles.sizeDelta, selectedSize === s.key && styles.sizeDeltaActive]}>
-                {s.delta}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {hasMultipleSizes && (
+          <>
+            <Text style={styles.sectionLabel}>РАЗМЕР</Text>
+            <View style={styles.sizes}>
+              {dish.sizes.map((s, idx) => (
+                <TouchableOpacity
+                  key={s.sizeId ?? idx}
+                  style={[styles.sizeCard, selectedSizeIdx === idx && styles.sizeCardActive]}
+                  onPress={() => { setSelectedSizeIdx(idx); setSelectedModifiers({}); }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.sizeSub, selectedSizeIdx === idx && styles.sizeSubActive]}>
+                    {s.sizeName}
+                  </Text>
+                  <Text style={[styles.sizeDelta, selectedSizeIdx === idx && styles.sizeDeltaActive]}>
+                    {Math.round(s.price).toLocaleString('ru-RU')} ₸
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </>
+        )}
 
-        <View style={styles.swipeHint}>
-          <Ionicons name="chevron-up" size={13} color="rgba(255,255,255,0.3)" />
-          <Text style={styles.swipeHintTxt}>Добавки</Text>
-          <Ionicons name="chevron-up" size={13} color="rgba(255,255,255,0.3)" />
-        </View>
-
+        {hasModifiers && (
+          <View style={styles.swipeHint}>
+            <Ionicons name="chevron-up" size={13} color="rgba(255,255,255,0.3)" />
+            <Text style={styles.swipeHintTxt}>Добавки</Text>
+            <Ionicons name="chevron-up" size={13} color="rgba(255,255,255,0.3)" />
+          </View>
+        )}
       </View>
 
-      {/* Extras sheet — выезжает снизу поверх контента */}
-      <Animated.View style={[styles.extrasSheet, { transform: [{ translateY: sheetY }] }]}>
-        <View style={styles.sheetDragArea}>
-          <View style={styles.sheetHandle} />
-        </View>
-        <Text style={styles.sheetTitle}>Добавить к блюду</Text>
-        {EXTRAS.map(e => {
-          const checked = selectedExtras.includes(e.key);
-          return (
-            <TouchableOpacity
-              key={e.key}
-              style={styles.extraRow}
-              onPress={() => toggleExtra(e.key)}
-              activeOpacity={0.7}
-            >
-              <View style={[styles.checkbox, checked && styles.checkboxActive]}>
-                {checked && <Ionicons name="checkmark" size={14} color="#fff" />}
+      {/* Extras sheet */}
+      {hasModifiers && (
+        <Animated.View style={[styles.extrasSheet, { transform: [{ translateY: sheetY }] }]}>
+          <View style={styles.sheetDragArea}>
+            <View style={styles.sheetHandle} />
+          </View>
+          <Text style={styles.sheetTitle}>Добавить к блюду</Text>
+          <ScrollView showsVerticalScrollIndicator={false}>
+            {modifierGroups.map((group, gi) => (
+              <View key={gi}>
+                {modifierGroups.length > 1 && (
+                  <Text style={styles.groupTitle}>{group.name}</Text>
+                )}
+                {group.modifiers.map(m => {
+                  const checked = !!selectedModifiers[m.id];
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      style={styles.extraRow}
+                      onPress={() => toggleModifier(m.id)}
+                      activeOpacity={0.7}
+                    >
+                      <View style={[styles.checkbox, checked && styles.checkboxActive]}>
+                        {checked && <Ionicons name="checkmark" size={14} color="#fff" />}
+                      </View>
+                      <Text style={styles.extraLabel}>{m.name}</Text>
+                      <Text style={styles.extraPrice}>
+                        {m.price > 0
+                          ? `+${Math.round(m.price).toLocaleString('ru-RU')} ₸`
+                          : 'Бесплатно'}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
               </View>
-              <Text style={styles.extraLabel}>{e.label}</Text>
-              <Text style={styles.extraPrice}>{e.price}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </Animated.View>
+            ))}
+          </ScrollView>
+        </Animated.View>
+      )}
 
-      {/* Bottom bar — всегда поверх шторки */}
+      {/* Bottom bar */}
       <View style={styles.bottomBar}>
         <View style={styles.qtyBox}>
           <TouchableOpacity onPress={() => setQty(q => Math.max(1, q - 1))} style={styles.qtyBtn}>
@@ -198,11 +224,7 @@ export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
             <Text style={styles.qtyBtnTxt}>+</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity
-          style={styles.cartBtn}
-          activeOpacity={0.85}
-          onPress={() => onAddToCart({ dish, qty, size: selectedSize as 's'|'m'|'l', extras: selectedExtras })}
-        >
+        <TouchableOpacity style={styles.cartBtn} activeOpacity={0.85} onPress={handleAddToCart}>
           <Text style={styles.cartBtnTxt}>В корзину · {total.toLocaleString('ru-RU')} ₸</Text>
         </TouchableOpacity>
       </View>
@@ -220,12 +242,6 @@ const styles = StyleSheet.create({
   },
   closeBtn: {
     position: 'absolute', top: 52, left: 20,
-    width: 40, height: 40, borderRadius: 20,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  moreBtn: {
-    position: 'absolute', top: 52, right: 20,
     width: 40, height: 40, borderRadius: 20,
     backgroundColor: 'rgba(0,0,0,0.45)',
     alignItems: 'center', justifyContent: 'center',
@@ -316,6 +332,10 @@ const styles = StyleSheet.create({
   },
   sheetTitle: {
     color: '#fff', fontSize: 17, fontWeight: '700', marginBottom: 14,
+  },
+  groupTitle: {
+    color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '700',
+    letterSpacing: 0.8, marginTop: 10, marginBottom: 4, textTransform: 'uppercase',
   },
   extraRow: {
     flexDirection: 'row', alignItems: 'center',

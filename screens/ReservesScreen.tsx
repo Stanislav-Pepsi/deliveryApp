@@ -1,12 +1,15 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import Text from '../components/Text';
+import { UserReservation, fetchUserReservations } from '../api/reservations';
 
 const GREEN      = '#8DBB00';
 const GREEN_DARK = '#4a6600';
@@ -14,41 +17,63 @@ const BG         = '#0c0f0a';
 const CARD       = 'rgba(255,255,255,0.06)';
 const BORDER     = 'rgba(255,255,255,0.1)';
 
-interface Reserve {
+const STATUS_MAP: Record<string, { label: string; active: boolean }> = {
+  CONFIRMED:  { label: 'Подтверждено', active: true },
+  PENDING:    { label: 'Ожидает',      active: true },
+  CANCELLED:  { label: 'Отменено',     active: false },
+  COMPLETED:  { label: 'Завершено',    active: false },
+};
+
+interface MappedReserve {
   id: string;
-  type: 'table' | 'banquet';
   place: string;
   date: string;
   time?: string;
   guests: number;
   status: string;
   active: boolean;
-  deposit?: string;
 }
 
-const RESERVES: Reserve[] = [
-  { id: '1', type: 'table',   place: 'Стол №8, Зал 2-й этаж',  date: '01.06.2026', time: '19:00', guests: 3, status: 'Подтверждено', active: true },
-  { id: '2', type: 'table',   place: 'Стол №7, Барная зона',    date: '18.03.2026', time: '19:30', guests: 4, status: 'Завершено',    active: false },
-  { id: '3', type: 'banquet', place: 'Банкет, Зал «Базилик»',   date: '25.03.2026', time: undefined, guests: 20, status: 'Завершено', active: false, deposit: '25 000 ₸' },
-];
+function mapReservation(r: UserReservation): MappedReserve {
+  const dt = (r.dateTime ?? '').split(' ');
+  const dateParts = (dt[0] ?? '').split('-');
+  const date = dateParts.length === 3
+    ? `${dateParts[2]}.${dateParts[1]}.${dateParts[0]}`
+    : r.dateTime;
+  const time = dt[1]?.slice(0, 5);
+  const place = r.place
+    ?? (r.tableNumber != null
+      ? `Стол №${r.tableNumber}${r.sectionName ? `, ${r.sectionName}` : ''}`
+      : 'Резервация');
+  const { label, active } = STATUS_MAP[r.status] ?? { label: r.status, active: false };
+  return { id: r.id, place, date, time, guests: r.guests, status: label, active };
+}
 
 interface Props {
   onBack: () => void;
+  authToken: string | null;
 }
 
-export default function ReservesScreen({ onBack }: Props) {
-  const current = RESERVES.filter(r => r.active);
-  const past    = RESERVES.filter(r => !r.active);
+export default function ReservesScreen({ onBack, authToken }: Props) {
+  const [reserves, setReserves] = useState<MappedReserve[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const renderReserve = (r: Reserve) => (
+  useEffect(() => {
+    if (!authToken) { setLoading(false); return; }
+    fetchUserReservations(authToken)
+      .then(data => setReserves(data.map(mapReservation)))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, [authToken]);
+
+  const current = reserves.filter(r => r.active);
+  const past    = reserves.filter(r => !r.active);
+
+  const renderReserve = (r: MappedReserve) => (
     <View key={r.id} style={[styles.card, !r.active && styles.cardDim]}>
       <View style={styles.cardTop}>
         <View style={styles.iconBox}>
-          <Ionicons
-            name={r.type === 'banquet' ? 'business-outline' : 'restaurant-outline'}
-            size={18}
-            color={r.active ? GREEN : 'rgba(255,255,255,0.3)'}
-          />
+          <Ionicons name="restaurant-outline" size={18} color={r.active ? GREEN : 'rgba(255,255,255,0.3)'} />
         </View>
         <View style={[styles.badge, r.active ? styles.badgeActive : styles.badgeDone]}>
           <Text style={[styles.badgeTxt, r.active ? styles.badgeActiveTxt : styles.badgeDoneTxt]}>
@@ -72,12 +97,6 @@ export default function ReservesScreen({ onBack }: Props) {
             {r.guests} {r.guests === 1 ? 'гость' : r.guests < 5 ? 'гостя' : 'гостей'}
           </Text>
         </View>
-        {r.deposit && (
-          <View style={styles.detailItem}>
-            <Ionicons name="cash-outline" size={13} color="rgba(255,255,255,0.3)" />
-            <Text style={[styles.detailTxt, !r.active && styles.textDimSub]}>Депозит {r.deposit}</Text>
-          </View>
-        )}
       </View>
     </View>
   );
@@ -97,16 +116,27 @@ export default function ReservesScreen({ onBack }: Props) {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {current.length > 0 && (
+        {loading ? (
+          <ActivityIndicator color={GREEN} style={{ marginTop: 60 }} />
+        ) : reserves.length === 0 ? (
+          <View style={styles.empty}>
+            <Ionicons name="calendar-outline" size={48} color="rgba(255,255,255,0.15)" />
+            <Text style={styles.emptyTxt}>Нет резервов</Text>
+          </View>
+        ) : (
           <>
-            <Text style={styles.sectionLabel}>ПРЕДСТОЯЩИЕ</Text>
-            {current.map(renderReserve)}
-          </>
-        )}
-        {past.length > 0 && (
-          <>
-            <Text style={[styles.sectionLabel, { marginTop: 24 }]}>ИСТОРИЯ</Text>
-            {past.map(renderReserve)}
+            {current.length > 0 && (
+              <>
+                <Text style={styles.sectionLabel}>ПРЕДСТОЯЩИЕ</Text>
+                {current.map(renderReserve)}
+              </>
+            )}
+            {past.length > 0 && (
+              <>
+                <Text style={[styles.sectionLabel, { marginTop: 24 }]}>ИСТОРИЯ</Text>
+                {past.map(renderReserve)}
+              </>
+            )}
           </>
         )}
         <View style={{ height: 40 }} />
@@ -130,6 +160,9 @@ const styles = StyleSheet.create({
   headerTitle: { color: '#fff', fontSize: 24, fontWeight: '800' },
 
   scroll: { paddingHorizontal: 20, paddingTop: 8 },
+
+  empty:    { alignItems: 'center', paddingTop: 80, gap: 12 },
+  emptyTxt: { color: 'rgba(255,255,255,0.4)', fontSize: 16, fontWeight: '600' },
 
   sectionLabel: {
     color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '700',

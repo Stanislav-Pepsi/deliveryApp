@@ -1,110 +1,37 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   BackHandler,
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import Text from '../components/Text';
+import { ApiTable, TableSection, createReservation, fetchSections } from '../api/reservations';
 
 const GREEN      = '#8DBB00';
 const GREEN_DARK = '#4a6600';
 const BG         = '#0c0f0a';
 const CARD       = 'rgba(255,255,255,0.06)';
 const BORDER     = 'rgba(255,255,255,0.1)';
-const CELL_SZ    = 58;
+const CELL_SZ    = 62;
 
 const MONTHS_SHORT = ['ЯНВ','ФЕВ','МАР','АПР','МАЙ','ИЮН','ИЮЛ','АВГ','СЕН','ОКТ','НОЯ','ДЕК'];
-
-type CellData = {
-  id: number; seats: number; desc: string; furn: string;
-  occupied?: boolean; mine?: boolean;
-};
-type Cell = CellData | 'occ' | null;
-type FloorKey = 'floor2' | 'bar' | 'private';
-
-const FLOORS: Record<FloorKey, { label: string; grid: Cell[][]; topLabel?: string; bottomLabel?: string }> = {
-  floor2: {
-    label: '2 этаж',
-    bottomLabel: '↑ ВХОД',
-    grid: [
-      [
-        { id: 11, seats: 2, desc: 'у стены',     furn: '2 стула' },
-        { id: 12, seats: 4, desc: 'у окна',      furn: '4 стула', occupied: true },
-        null,
-        { id: 13, seats: 2, desc: 'у окна',      furn: '2 стула' },
-        { id: 14, seats: 6, desc: 'угловой',     furn: 'диван + 2 стула' },
-      ],
-      [
-        null,
-        { id: 15, seats: 4, desc: 'центральный', furn: '4 стула' },
-        { id: 16, seats: 4, desc: 'центральный', furn: '4 стула', occupied: true },
-        { id: 17, seats: 2, desc: 'у стены',     furn: '2 стула' },
-        null,
-      ],
-      [
-        { id: 18, seats: 4, desc: 'у окна',      furn: '4 стула' },
-        { id: 19, seats: 6, desc: 'угловой',     furn: 'диван + 4 стула' },
-        null,
-        { id: 20, seats: 2, desc: 'у стены',     furn: '2 стула', occupied: true },
-        { id: 21, seats: 2, desc: 'у входа',     furn: '2 стула' },
-      ],
-    ],
-  },
-  bar: {
-    label: 'Бар',
-    topLabel: 'B A R',
-    bottomLabel: '↑ ВХОД',
-    grid: [
-      [
-        { id: 2, seats: 2, desc: 'у входа',     furn: '2 стула' },
-        { id: 3, seats: 2, desc: 'у стены',     furn: '2 стула' },
-        'occ',
-        { id: 5, seats: 2, desc: 'у стойки',    furn: '2 стула' },
-        { id: 6, seats: 6, desc: 'у бара',      furn: 'диван + 2 стула' },
-      ],
-      [
-        { id: 4, seats: 4, desc: 'у стены',     furn: '4 стула' },
-        'occ',
-        { id: 7, seats: 6, desc: 'у окна',      furn: 'диван + 4 стула', occupied: true, mine: true },
-        { id: 8, seats: 8, desc: 'центральный', furn: '8 стульев' },
-        { id: 9, seats: 4, desc: 'у стены',     furn: '4 стула' },
-      ],
-    ],
-  },
-  private: {
-    label: 'Кабинки',
-    grid: [
-      [
-        { id: 31, seats: 6, desc: 'кабинка 1',  furn: 'диван + стул', occupied: true },
-        { id: 32, seats: 6, desc: 'кабинка 2',  furn: 'диван + стул' },
-        null, null, null,
-      ],
-      [
-        { id: 33, seats: 8, desc: 'кабинка 3',  furn: 'диван + 4 стула' },
-        { id: 34, seats: 8, desc: 'кабинка 4',  furn: 'диван + 4 стула', occupied: true },
-        null, null, null,
-      ],
-    ],
-  },
-};
-
-const MY_TABLE   = { tableId: 7, date: '18.03.2026', time: '19:30', guests: 4, desc: 'у окна', furn: 'диван + 4 стула', seats: 6 };
-const MY_BANQUET = { date: '25.03.2026', time: '18:00', guests: 15, hall: 'Зал «Базилик»', deposit: '25 000 ₸' };
 
 interface Props {
   date: string;
   time: string;
   guests: number;
   dishCount: number;
-  tableId: number | null;
-  onTableChange: (id: number | null) => void;
+  tableId: string | null;
+  onTableChange: (id: string | null) => void;
   onAddDishesPress: () => void;
   onBack: () => void;
-  onConfirm: (tableId: number) => void;
+  onConfirm: () => void;
+  authToken: string | null;
 }
 
 function formatDate(s: string) {
@@ -113,43 +40,65 @@ function formatDate(s: string) {
   return `${p[0]} ${MONTHS_SHORT[parseInt(p[1], 10) - 1] ?? ''}`;
 }
 
-function findCell(id: number): CellData | null {
-  for (const f of Object.values(FLOORS)) {
-    for (const row of f.grid) {
-      for (const c of row) {
-        if (c && c !== 'occ' && c.id === id) return c;
-      }
-    }
-  }
-  return null;
-}
-
 export default function TableSelectionScreen({
-  date, time, guests, dishCount, tableId, onTableChange, onAddDishesPress, onBack, onConfirm,
+  date, time, guests, dishCount, tableId, onTableChange, onAddDishesPress, onBack, onConfirm, authToken,
 }: Props) {
-  const [floor, setFloor] = useState<FloorKey>('bar');
+  const [sections, setSections] = useState<TableSection[]>([]);
+  const [sectionId, setSectionId] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [confirming, setConfirming] = useState(false);
+  const [confirmError, setConfirmError] = useState('');
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });
     return () => sub.remove();
   }, [onBack]);
 
-  const floorData  = FLOORS[floor];
-  const selCell    = tableId !== null ? findCell(tableId) : null;
-  const canConfirm = selCell !== null && !selCell.occupied && !selCell.mine;
+  useEffect(() => {
+    if (!authToken) return;
+    setLoading(true);
+    setLoadError('');
+    fetchSections(authToken)
+      .then(data => {
+        setSections(data);
+        if (data.length > 0) setSectionId(data[0].id);
+      })
+      .catch(e => setLoadError(e.message || 'Ошибка загрузки залов'))
+      .finally(() => setLoading(false));
+  }, [authToken]);
+
+  const currentSection = sections.find(s => s.id === sectionId);
+  const allTables: ApiTable[] = sections.flatMap(s => s.tables);
+  const selTable = tableId ? allTables.find(t => t.id === tableId) ?? null : null;
+  const canConfirm = !!selTable?.isAvailable;
   const guestWord  = guests === 1 ? 'ГОСТЬ' : guests < 5 ? 'ГОСТЯ' : 'ГОСТЕЙ';
 
-  const handleCell = (cell: Cell) => {
-    if (!cell || cell === 'occ') return;
-    if (cell.occupied && !cell.mine) return;
-    onTableChange(cell.id);
+  const handleConfirm = async () => {
+    if (!selTable || !authToken) return;
+    setConfirmError('');
+    setConfirming(true);
+    try {
+      await createReservation(selTable.id, date, time, guests, authToken);
+      onConfirm();
+    } catch (e: any) {
+      setConfirmError(e.message || 'Ошибка создания резерва');
+    } finally {
+      setConfirming(false);
+    }
   };
+
+  const rows: ApiTable[][] = [];
+  if (currentSection) {
+    for (let i = 0; i < currentSection.tables.length; i += 4) {
+      rows.push(currentSection.tables.slice(i, i + 4));
+    }
+  }
 
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
           <Ionicons name="chevron-back" size={22} color="#fff" />
@@ -163,140 +112,89 @@ export default function TableSelectionScreen({
         <View style={{ width: 42 }} />
       </View>
 
-      {/* Floor tabs */}
-      <View style={styles.tabs}>
-        {(Object.keys(FLOORS) as FloorKey[]).map(k => (
-          <TouchableOpacity
-            key={k}
-            style={[styles.tab, floor === k && styles.tabActive]}
-            onPress={() => setFloor(k)}
-            activeOpacity={0.7}
-          >
-            <Text style={[styles.tabTxt, floor === k && styles.tabTxtActive]}>
-              {FLOORS[k].label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      {sections.length > 1 && (
+        <View style={styles.tabs}>
+          {sections.map(s => (
+            <TouchableOpacity
+              key={s.id}
+              style={[styles.tab, sectionId === s.id && styles.tabActive]}
+              onPress={() => setSectionId(s.id)}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.tabTxt, sectionId === s.id && styles.tabTxtActive]}>
+                {s.name}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       <ScrollView style={styles.scroll} contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
-        {/* Floor plan */}
-        <View style={styles.planCard}>
-          {floorData.topLabel && <Text style={styles.areaLabel}>{floorData.topLabel}</Text>}
-
-          {floorData.grid.map((row, ri) => (
-            <View key={ri} style={styles.gridRow}>
-              {row.map((cell, ci) => {
-                if (cell === null) return <View key={ci} style={styles.cellEmpty} />;
-                const isOcc  = cell === 'occ' || (cell !== 'occ' && !!cell.occupied && !cell.mine);
-                const isMine = cell !== 'occ' && !!cell.mine;
-                const isSel  = cell !== 'occ' && cell.id === tableId;
-                const label  = cell !== 'occ' ? cell.id : null;
-                return (
-                  <TouchableOpacity
-                    key={ci}
-                    style={[styles.cell, isOcc && styles.cellOcc, isMine && styles.cellMine, isSel && !isMine && styles.cellSel]}
-                    onPress={() => handleCell(cell)}
-                    activeOpacity={isOcc ? 1 : 0.7}
-                    disabled={isOcc}
-                  >
-                    {isOcc ? (
-                      <Text style={styles.cellX}>✕</Text>
-                    ) : (
-                      <>
-                        <Text style={[styles.cellNum, isMine && styles.cellNumMine, isSel && !isMine && styles.cellNumSel]}>
-                          {label}
+        {loading ? (
+          <View style={styles.centered}>
+            <ActivityIndicator color={GREEN} size="large" />
+          </View>
+        ) : loadError ? (
+          <View style={styles.centered}>
+            <Text style={styles.errorTxt}>{loadError}</Text>
+          </View>
+        ) : (
+          <View style={styles.planCard}>
+            {rows.map((row, ri) => (
+              <View key={ri} style={styles.gridRow}>
+                {row.map(table => {
+                  const isOcc  = !table.isAvailable;
+                  const isSel  = table.id === tableId;
+                  return (
+                    <TouchableOpacity
+                      key={table.id}
+                      style={[styles.cell, isOcc && styles.cellOcc, isSel && styles.cellSel]}
+                      onPress={() => !isOcc && onTableChange(isSel ? null : table.id)}
+                      activeOpacity={isOcc ? 1 : 0.7}
+                      disabled={isOcc}
+                    >
+                      {isOcc ? (
+                        <Text style={styles.cellX}>✕</Text>
+                      ) : (
+                        <Text style={[styles.cellNum, isSel && styles.cellNumSel]}>
+                          {table.number}
                         </Text>
-                        {isMine && (
-                          <View style={styles.mineBadge}>
-                            <Ionicons name="bookmark" size={8} color="#fff" />
-                          </View>
-                        )}
-                      </>
-                    )}
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          ))}
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
 
-          {floorData.bottomLabel && <Text style={styles.entranceLabel}>{floorData.bottomLabel}</Text>}
-
-          <View style={styles.legend}>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: GREEN }]} />
-              <Text style={styles.legendTxt}>выбран</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: GREEN_DARK, borderWidth: 1, borderColor: GREEN }]} />
-              <Text style={styles.legendTxt}>моя бронь</Text>
-            </View>
-            <View style={styles.legendItem}>
-              <View style={[styles.legendDot, { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
-              <Text style={styles.legendTxt}>занят</Text>
+            <View style={styles.legend}>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: GREEN }]} />
+                <Text style={styles.legendTxt}>выбран</Text>
+              </View>
+              <View style={styles.legendItem}>
+                <View style={[styles.legendDot, { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
+                <Text style={styles.legendTxt}>занят</Text>
+              </View>
             </View>
           </View>
-        </View>
-
-        {/* My reservations */}
-        <Text style={styles.sLabel}>МОИ БРОНИ</Text>
-
-        <View style={styles.myCard}>
-          <View style={styles.myCardIcon}>
-            <Ionicons name="bookmark" size={18} color={GREEN} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.myCardTitle}>Стол №{MY_TABLE.tableId} · {MY_TABLE.desc}</Text>
-            <Text style={styles.myCardSub}>
-              {formatDate(MY_TABLE.date)} · {MY_TABLE.time} · {MY_TABLE.guests} гостя
-            </Text>
-            <Text style={styles.myCardFurn}>{MY_TABLE.seats} мест · {MY_TABLE.furn}</Text>
-          </View>
-          <Text style={styles.myCardNum}>{MY_TABLE.tableId}</Text>
-        </View>
-
-        <View style={[styles.myCard, styles.myCardBanq]}>
-          <View style={styles.myCardIcon}>
-            <Ionicons name="wine-outline" size={18} color={GREEN} />
-          </View>
-          <View style={{ flex: 1 }}>
-            <Text style={styles.myCardTitle}>{MY_BANQUET.hall}</Text>
-            <Text style={styles.myCardSub}>
-              {formatDate(MY_BANQUET.date)} · {MY_BANQUET.time} · {MY_BANQUET.guests} гостей
-            </Text>
-            <Text style={styles.myCardFurn}>Депозит {MY_BANQUET.deposit}</Text>
-          </View>
-          <Ionicons name="lock-closed-outline" size={16} color="rgba(255,255,255,0.25)" />
-        </View>
+        )}
 
         <View style={{ height: 160 }} />
       </ScrollView>
 
-      {/* Bottom bar */}
       <View style={styles.bottomBar}>
         {tableId !== null ? (
-          <View style={[styles.selCard, selCell?.mine && styles.selCardMine]}>
-            {selCell?.mine ? (
-              <>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.selLabel, { color: GREEN }]}>ВАША БРОНЬ</Text>
-                  <Text style={styles.selDesc}>{selCell.desc}</Text>
-                  <Text style={styles.selFurn}>{selCell.seats} мест · {selCell.furn}</Text>
-                </View>
-                <Ionicons name="bookmark" size={26} color={GREEN} />
-              </>
-            ) : selCell ? (
-              <>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.selLabel}>СТОЛ №{selCell.id}</Text>
-                  <Text style={styles.selDesc}>{selCell.desc}</Text>
-                  <Text style={styles.selFurn}>{selCell.seats} мест · {selCell.furn}</Text>
-                </View>
-                <Text style={styles.selBigNum}>{selCell.id}</Text>
-              </>
-            ) : null}
-          </View>
+          selTable ? (
+            <View style={styles.selCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.selLabel}>СТОЛ №{selTable.number}</Text>
+                {selTable.description ? <Text style={styles.selDesc}>{selTable.description}</Text> : null}
+                <Text style={styles.selFurn}>{selTable.seats} мест</Text>
+              </View>
+              <Text style={styles.selBigNum}>{selTable.number}</Text>
+            </View>
+          ) : null
         ) : (
           <Text style={styles.selHint}>Нажмите на стол, чтобы выбрать</Text>
         )}
@@ -318,15 +216,18 @@ export default function TableSelectionScreen({
           </TouchableOpacity>
         )}
 
+        {!!confirmError && <Text style={styles.errorTxt}>{confirmError}</Text>}
+
         <TouchableOpacity
-          style={[styles.confirmBtn, !canConfirm && styles.confirmBtnOff]}
+          style={[styles.confirmBtn, (!canConfirm || confirming) && styles.confirmBtnOff]}
           activeOpacity={0.85}
-          disabled={!canConfirm}
-          onPress={() => tableId !== null && onConfirm(tableId)}
+          disabled={!canConfirm || confirming}
+          onPress={handleConfirm}
         >
-          <Text style={styles.confirmTxt}>
-            {selCell?.mine ? 'Это ваша бронь' : canConfirm ? 'Зарезервировать' : 'Выберите стол'}
-          </Text>
+          {confirming
+            ? <ActivityIndicator color="#fff" />
+            : <Text style={styles.confirmTxt}>{canConfirm ? 'Зарезервировать' : 'Выберите стол'}</Text>
+          }
         </TouchableOpacity>
       </View>
     </View>
@@ -362,14 +263,13 @@ const styles = StyleSheet.create({
   scroll:        { flex: 1 },
   scrollContent: { paddingHorizontal: 16, paddingTop: 12 },
 
+  centered:  { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
+  errorTxt:  { color: '#e05252', fontSize: 13, fontWeight: '500', textAlign: 'center' },
+
   planCard: {
     backgroundColor: 'rgba(255,255,255,0.03)',
     borderRadius: 20, borderWidth: 1, borderColor: BORDER,
     padding: 16, marginBottom: 8,
-  },
-  areaLabel: {
-    color: 'rgba(255,255,255,0.18)', fontSize: 11, fontWeight: '700',
-    letterSpacing: 3, textAlign: 'center', marginBottom: 14,
   },
   gridRow:   { flexDirection: 'row', justifyContent: 'center', marginBottom: 8 },
   cell: {
@@ -377,46 +277,17 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.09)',
     borderRadius: 12, alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-    position: 'relative',
   },
-  cellEmpty:   { width: CELL_SZ, height: CELL_SZ, margin: 4 },
   cellOcc:     { backgroundColor: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.05)' },
-  cellMine:    { backgroundColor: 'rgba(74,102,0,0.4)', borderColor: GREEN, borderWidth: 1.5 },
   cellSel:     { backgroundColor: GREEN, borderColor: GREEN },
-  cellNum:     { color: 'rgba(255,255,255,0.65)', fontSize: 17, fontWeight: '700' },
-  cellNumMine: { color: GREEN },
+  cellNum:     { color: 'rgba(255,255,255,0.75)', fontSize: 18, fontWeight: '700' },
   cellNumSel:  { color: '#fff' },
   cellX:       { color: 'rgba(255,255,255,0.18)', fontSize: 18, fontWeight: '300' },
-  mineBadge: {
-    position: 'absolute', top: 5, right: 5,
-    width: 14, height: 14, borderRadius: 7,
-    backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center',
-  },
-  entranceLabel: {
-    color: 'rgba(255,255,255,0.2)', fontSize: 10, fontWeight: '600',
-    letterSpacing: 1.5, textAlign: 'center', marginTop: 2, marginBottom: 14,
-  },
-  legend:     { flexDirection: 'row', justifyContent: 'center', gap: 18 },
+
+  legend:     { flexDirection: 'row', justifyContent: 'center', gap: 18, marginTop: 8 },
   legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   legendDot:  { width: 10, height: 10, borderRadius: 3 },
   legendTxt:  { color: 'rgba(255,255,255,0.3)', fontSize: 11 },
-
-  sLabel: {
-    color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '700',
-    letterSpacing: 1.2, marginBottom: 10, marginTop: 20,
-  },
-  myCard: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: CARD, borderRadius: 16, padding: 14,
-    borderWidth: 1, borderColor: 'rgba(141,187,0,0.25)',
-    marginBottom: 10, gap: 12,
-  },
-  myCardBanq:  { borderColor: 'rgba(141,187,0,0.35)', backgroundColor: 'rgba(141,187,0,0.05)' },
-  myCardIcon:  { width: 38, height: 38, borderRadius: 12, backgroundColor: 'rgba(141,187,0,0.12)', alignItems: 'center', justifyContent: 'center' },
-  myCardTitle: { color: '#fff', fontSize: 14, fontWeight: '700', marginBottom: 2 },
-  myCardSub:   { color: 'rgba(255,255,255,0.4)', fontSize: 12, marginBottom: 2 },
-  myCardFurn:  { color: 'rgba(255,255,255,0.3)', fontSize: 11 },
-  myCardNum:   { color: GREEN, fontSize: 32, fontWeight: '800' },
 
   bottomBar: {
     paddingHorizontal: 20, paddingTop: 12, paddingBottom: 46,
@@ -425,7 +296,6 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   selCard:     { flexDirection: 'row', alignItems: 'center', backgroundColor: CARD, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: BORDER },
-  selCardMine: { borderColor: 'rgba(141,187,0,0.4)', backgroundColor: 'rgba(141,187,0,0.07)' },
   selLabel:    { color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 3 },
   selDesc:     { color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 2 },
   selFurn:     { color: 'rgba(255,255,255,0.45)', fontSize: 12 },

@@ -1,17 +1,19 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   ActivityIndicator,
   Keyboard,
   Platform,
   StatusBar,
   StyleSheet,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import Text from '../components/Text';
+import { AddressInput } from '../api/addresses';
 import MapView, { Region } from 'react-native-maps';
 
 const GREEN      = '#8DBB00';
@@ -30,7 +32,7 @@ const DEFAULT_REGION: Region = {
 
 interface Props {
   initialAddress?: string;
-  onSave: (address: string) => void;
+  onSave: (input: AddressInput, display: string) => void;
   onBack: () => void;
 }
 
@@ -38,9 +40,35 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
   const mapRef  = useRef<MapView>(null);
   const [region, setRegion]         = useState<Region>(DEFAULT_REGION);
   const [address, setAddress]       = useState(initialAddress ?? '');
+  const [entrance, setEntrance]     = useState('');
+  const [apartment, setApartment]   = useState('');
+  const [floor, setFloor]           = useState('');
   const [geocoding, setGeocoding]   = useState(false);
   const [dragging, setDragging]     = useState(false);
   const [permDenied, setPermDenied] = useState(false);
+  const [rawStreet, setRawStreet]   = useState('');
+  const [rawHouse, setRawHouse]     = useState('');
+  const sheetBottom = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEv = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const onShow = Keyboard.addListener(showEv, e => {
+      Animated.timing(sheetBottom, {
+        toValue: e.endCoordinates.height,
+        duration: Platform.OS === 'ios' ? (e.duration ?? 250) : 180,
+        useNativeDriver: false,
+      }).start();
+    });
+    const onHide = Keyboard.addListener(hideEv, e => {
+      Animated.timing(sheetBottom, {
+        toValue: 0,
+        duration: Platform.OS === 'ios' ? (e.duration ?? 250) : 180,
+        useNativeDriver: false,
+      }).start();
+    });
+    return () => { onShow.remove(); onHide.remove(); };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -69,6 +97,8 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
       const results = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
       if (results.length > 0) {
         const r = results[0];
+        setRawStreet(r.street ?? '');
+        setRawHouse(r.streetNumber ?? '');
         const parts = [r.street, r.streetNumber, r.city].filter(Boolean);
         if (parts.length > 0) setAddress(parts.join(', '));
       }
@@ -101,9 +131,31 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
   };
 
   const handleSave = () => {
-    if (address.trim()) {
-      onSave(address.trim());
-    }
+    if (!address.trim()) return;
+    const trimmed = address.trim();
+    const street = rawStreet || trimmed.split(',')[0].trim();
+    const house  = rawHouse  || (() => {
+      const i = trimmed.lastIndexOf(' ');
+      return i === -1 ? '' : trimmed.substring(i + 1);
+    })();
+
+    const details = [
+      entrance.trim()  ? `под. ${entrance.trim()}`  : '',
+      floor.trim()     ? `этаж ${floor.trim()}`     : '',
+      apartment.trim() ? `кв. ${apartment.trim()}`  : '',
+    ].filter(Boolean).join(', ');
+    const display = details ? `${trimmed}, ${details}` : trimmed;
+
+    onSave(
+      {
+        street,
+        house,
+        apartment: apartment.trim() || undefined,
+        entrance:  entrance.trim()  || undefined,
+        floor:     floor.trim()     || undefined,
+      },
+      display,
+    );
   };
 
   return (
@@ -142,7 +194,7 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
       </TouchableOpacity>
 
       {/* Bottom sheet */}
-      <View style={styles.sheet}>
+      <Animated.View style={[styles.sheet, { bottom: sheetBottom }]}>
         <View style={styles.handle} />
 
         <Text style={styles.sheetTitle}>Укажите адрес</Text>
@@ -163,6 +215,50 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
           {geocoding && <ActivityIndicator size="small" color={GREEN} style={{ marginLeft: 8 }} />}
         </View>
 
+        {/* Детали адреса */}
+        <View style={styles.detailsRow}>
+          <View style={[styles.detailField, { flex: 1 }]}>
+            <Text style={styles.detailLabel}>Подъезд</Text>
+            <TextInput
+              style={styles.detailInput}
+              value={entrance}
+              onChangeText={setEntrance}
+              placeholder="—"
+              placeholderTextColor="rgba(255,255,255,0.25)"
+              keyboardType="numeric"
+              returnKeyType="next"
+              selectionColor={GREEN}
+            />
+          </View>
+          <View style={[styles.detailField, { flex: 1 }]}>
+            <Text style={styles.detailLabel}>Этаж</Text>
+            <TextInput
+              style={styles.detailInput}
+              value={floor}
+              onChangeText={setFloor}
+              placeholder="—"
+              placeholderTextColor="rgba(255,255,255,0.25)"
+              keyboardType="numeric"
+              returnKeyType="next"
+              selectionColor={GREEN}
+            />
+          </View>
+          <View style={[styles.detailField, { flex: 1.5 }]}>
+            <Text style={styles.detailLabel}>Квартира</Text>
+            <TextInput
+              style={styles.detailInput}
+              value={apartment}
+              onChangeText={setApartment}
+              placeholder="—"
+              placeholderTextColor="rgba(255,255,255,0.25)"
+              keyboardType="numeric"
+              returnKeyType="done"
+              onSubmitEditing={() => Keyboard.dismiss()}
+              selectionColor={GREEN}
+            />
+          </View>
+        </View>
+
         {permDenied && (
           <Text style={styles.permNote}>
             Разрешение на геолокацию не выдано — двигайте карту вручную.
@@ -179,7 +275,7 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
         </TouchableOpacity>
 
         <View style={{ height: Platform.OS === 'android' ? 60 : 36 }} />
-      </View>
+      </Animated.View>
     </View>
   );
 }
@@ -210,7 +306,7 @@ const styles = StyleSheet.create({
   },
 
   sheet: {
-    position: 'absolute', bottom: 0, left: 0, right: 0,
+    position: 'absolute', left: 0, right: 0,
     backgroundColor: BG,
     borderTopLeftRadius: 24, borderTopRightRadius: 24,
     paddingHorizontal: 24, paddingTop: 10,
@@ -227,6 +323,22 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   input: { flex: 1, color: '#fff', fontSize: 15, paddingVertical: 14 },
+
+  detailsRow: {
+    flexDirection: 'row', gap: 8, marginBottom: 16,
+  },
+  detailField: {
+    backgroundColor: CARD, borderRadius: 12,
+    borderWidth: 1, borderColor: BORDER,
+    paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4,
+  },
+  detailLabel: {
+    color: 'rgba(255,255,255,0.35)', fontSize: 10,
+    fontWeight: '700', letterSpacing: 0.8, marginBottom: 2,
+  },
+  detailInput: {
+    color: '#fff', fontSize: 15, paddingVertical: 6,
+  },
 
   permNote: {
     color: 'rgba(255,255,255,0.4)', fontSize: 12,

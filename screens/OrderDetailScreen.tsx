@@ -1,5 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
+import { useEffect, useRef } from 'react';
 import {
+  Animated,
   Image,
   ScrollView,
   StatusBar,
@@ -35,6 +37,17 @@ interface Props {
 }
 
 export default function OrderDetailScreen({ order, onBack }: Props) {
+  const blinkAnim = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(blinkAnim, { toValue: 0.15, duration: 500, useNativeDriver: true }),
+        Animated.timing(blinkAnim, { toValue: 1, duration: 500, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
@@ -121,7 +134,11 @@ export default function OrderDetailScreen({ order, onBack }: Props) {
             <Text style={[styles.timeCardLabel, order.time === 'asap' && styles.timeCardLabelActive]}>
               КАК МОЖНО СКОРЕЕ
             </Text>
-            <Text style={styles.timeCardMain}>~35 мин</Text>
+            {order.time === 'asap' ? (
+              <Animated.Text style={[styles.timeCardMain, { opacity: blinkAnim }]}>~35 мин</Animated.Text>
+            ) : (
+              <Text style={styles.timeCardMain}>~35 мин</Text>
+            )}
             <Text style={styles.timeCardSub}>9:45 — 10:20</Text>
           </View>
           <View style={[styles.timeCard, order.time === 'scheduled' && styles.timeCardActive]}>

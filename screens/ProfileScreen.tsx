@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useState } from 'react';
 import {
@@ -6,11 +6,11 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
+import Text from '../components/Text';
 
 const GREEN      = '#8DBB00';
 const GREEN_DARK = '#4a6600';
@@ -21,9 +21,10 @@ const SHEET_BG   = '#161a13';
 const RED        = '#e05252';
 
 const MENU = [
-  { key: 'address',  icon: 'location-outline' as const, label: 'Адрес',       sub: null },
-  { key: 'orders',   icon: 'receipt-outline'  as const, label: 'Мои заказы',  sub: null },
-  { key: 'reserves', icon: 'calendar-outline' as const, label: 'Мои резервы', sub: null },
+  { key: 'address',   icon: 'location-outline' as const, label: 'Адрес',        sub: null },
+  { key: 'orders',    icon: 'receipt-outline'  as const, label: 'Мои заказы',   sub: null },
+  { key: 'favorites', icon: 'heart-outline'    as const, label: 'Избранное',    sub: null },
+  { key: 'reserves',  icon: 'calendar-outline' as const, label: 'Мои резервы',  sub: null },
 ];
 
 const NAV = [
@@ -36,6 +37,8 @@ const NAV = [
 interface Props {
   name: string;
   onNameChange: (n: string) => void;
+  onNameSave?: (n: string) => Promise<void>;
+  authToken?: string | null;
   cartCount: number;
   onGoHome: () => void;
   onReservationPress: () => void;
@@ -44,18 +47,27 @@ interface Props {
   onOrdersPress: () => void;
   onReservesPress: () => void;
   onAddressPress: () => void;
+  onLoyaltyPress: () => void;
+  onFavoritesPress: () => void;
   address?: string;
+  phone?: string;
+  loyaltyBalance?: number | null;
 }
 
 export default function ProfileScreen({
-  name, onNameChange, cartCount, onGoHome, onReservationPress, onCartPress, onLogout,
-  onOrdersPress, onReservesPress, onAddressPress, address,
+  name, onNameChange, onNameSave, cartCount, authToken, onGoHome, onReservationPress, onCartPress, onLogout,
+  onOrdersPress, onReservesPress, onAddressPress, onLoyaltyPress, onFavoritesPress, address, phone, loyaltyBalance,
 }: Props) {
   const [editOpen, setEditOpen] = useState(false);
   const [draft, setDraft]       = useState('');
 
   const openEdit = () => { setDraft(name); setEditOpen(true); };
-  const saveName = () => { if (draft.trim()) onNameChange(draft.trim()); setEditOpen(false); };
+  const saveName = () => {
+    if (!draft.trim()) return;
+    onNameChange(draft.trim());
+    onNameSave?.(draft.trim()).catch(() => {});
+    setEditOpen(false);
+  };
 
   const initial = name.trim().charAt(0).toUpperCase();
 
@@ -81,8 +93,23 @@ export default function ProfileScreen({
               <Text style={styles.profileName} numberOfLines={1}>{name}</Text>
               <Ionicons name="pencil-outline" size={14} color="rgba(255,255,255,0.3)" style={{ marginLeft: 7, marginTop: 2 }} />
             </TouchableOpacity>
+            {!!phone && <Text style={styles.profilePhone}>{phone}</Text>}
           </View>
         </View>
+
+        {/* Loyalty balance card */}
+        {loyaltyBalance !== null && (
+          <TouchableOpacity style={styles.loyaltyCard} onPress={onLoyaltyPress} activeOpacity={0.8}>
+            <View style={styles.loyaltyLeft}>
+              <Ionicons name="star" size={22} color={GREEN} />
+              <View style={{ marginLeft: 12 }}>
+                <Text style={styles.loyaltyLabel}>Ваши бонусы</Text>
+                <Text style={styles.loyaltyVal}>{String(loyaltyBalance)} бонусов</Text>
+              </View>
+            </View>
+            <Ionicons name="chevron-forward" size={17} color="rgba(255,255,255,0.2)" />
+          </TouchableOpacity>
+        )}
 
         {/* Menu */}
         <View style={styles.menuCard}>
@@ -92,9 +119,11 @@ export default function ProfileScreen({
               style={[styles.menuRow, idx < MENU.length - 1 && styles.menuRowDivider]}
               activeOpacity={0.7}
               onPress={() => {
-                if (item.key === 'address')  { onAddressPress(); return; }
-                if (item.key === 'orders')   { onOrdersPress(); return; }
-                if (item.key === 'reserves') { onReservesPress(); return; }
+                if (item.key === 'address')   { onAddressPress(); return; }
+                if (item.key === 'orders')    { onOrdersPress(); return; }
+                if (item.key === 'loyalty')   { onLoyaltyPress(); return; }
+                if (item.key === 'favorites') { onFavoritesPress(); return; }
+                if (item.key === 'reserves')  { onReservesPress(); return; }
               }}
             >
               <View style={styles.menuIconBox}>
@@ -200,7 +229,18 @@ const styles = StyleSheet.create({
   avatar:    { width: 56, height: 56, borderRadius: 28, backgroundColor: GREEN_DARK, borderWidth: 2, borderColor: GREEN, alignItems: 'center', justifyContent: 'center' },
   avatarTxt: { color: '#fff', fontSize: 22, fontWeight: '800' },
   nameRow:   { flexDirection: 'row', alignItems: 'center', marginBottom: 5 },
-  profileName: { color: '#fff', fontSize: 18, fontWeight: '700', flexShrink: 1 },
+  profileName:  { color: '#fff', fontSize: 18, fontWeight: '700', flexShrink: 1 },
+  profilePhone: { color: 'rgba(255,255,255,0.4)', fontSize: 13, marginTop: 2 },
+
+  loyaltyCard: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: 'rgba(141,187,0,0.08)',
+    borderRadius: 18, padding: 16,
+    borderWidth: 1, borderColor: GREEN_DARK, marginBottom: 12,
+  },
+  loyaltyLeft:  { flexDirection: 'row', alignItems: 'center' },
+  loyaltyLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  loyaltyVal:   { color: '#fff', fontSize: 16, fontWeight: '700', marginTop: 2 },
 
   menuCard: {
     backgroundColor: CARD, borderRadius: 18,

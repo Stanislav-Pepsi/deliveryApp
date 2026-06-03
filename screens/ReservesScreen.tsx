@@ -1,8 +1,8 @@
 ﻿import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  ScrollView,
+  FlatList,
   StatusBar,
   StyleSheet,
   TouchableOpacity,
@@ -18,6 +18,7 @@ const CARD       = 'rgba(255,255,255,0.06)';
 const BORDER     = 'rgba(255,255,255,0.1)';
 
 const STATUS_MAP: Record<string, { label: string; active: boolean }> = {
+  CREATED:    { label: 'Создано',      active: true },
   CONFIRMED:  { label: 'Подтверждено', active: true },
   PENDING:    { label: 'Ожидает',      active: true },
   CANCELLED:  { label: 'Отменено',     active: false },
@@ -35,18 +36,20 @@ interface MappedReserve {
 }
 
 function mapReservation(r: UserReservation): MappedReserve {
-  const dt = (r.dateTime ?? '').split(' ');
+  const rawDt = r.estimatedStartTime ?? r.dateTime ?? '';
+  const dt = rawDt.split(' ');
   const dateParts = (dt[0] ?? '').split('-');
   const date = dateParts.length === 3
     ? `${dateParts[2]}.${dateParts[1]}.${dateParts[0]}`
-    : r.dateTime;
+    : rawDt;
   const time = dt[1]?.slice(0, 5);
   const place = r.place
     ?? (r.tableNumber != null
       ? `Стол №${r.tableNumber}${r.sectionName ? `, ${r.sectionName}` : ''}`
       : 'Резервация');
+  const guestsVal = r.guestsCount ?? r.guests ?? 0;
   const { label, active } = STATUS_MAP[r.status] ?? { label: r.status, active: false };
-  return { id: r.id, place, date, time, guests: r.guests, status: label, active };
+  return { id: r.id, place, date, time, guests: guestsVal, status: label, active };
 }
 
 interface Props {
@@ -55,16 +58,36 @@ interface Props {
 }
 
 export default function ReservesScreen({ onBack, authToken }: Props) {
-  const [reserves, setReserves] = useState<MappedReserve[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [reserves, setReserves]       = useState<MappedReserve[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore]         = useState(false);
+  const pageRef = useRef(1);
 
   useEffect(() => {
     if (!authToken) { setLoading(false); return; }
-    fetchUserReservations(authToken)
-      .then(data => setReserves(data.map(mapReservation)))
+    fetchUserReservations(authToken, 1, 20)
+      .then(res => {
+        setReserves(res.data.map(mapReservation));
+        setHasMore(20 < res.total);
+        pageRef.current = 1;
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [authToken]);
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !authToken) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = pageRef.current + 1;
+      const res = await fetchUserReservations(authToken, nextPage, 20);
+      setReserves(prev => [...prev, ...res.data.map(mapReservation)]);
+      setHasMore(nextPage * 20 < res.total);
+      pageRef.current = nextPage;
+    } catch {}
+    setLoadingMore(false);
+  };
 
   const current = reserves.filter(r => r.active);
   const past    = reserves.filter(r => !r.active);
@@ -115,32 +138,36 @@ export default function ReservesScreen({ onBack, authToken }: Props) {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {loading ? (
-          <ActivityIndicator color={GREEN} style={{ marginTop: 60 }} />
-        ) : reserves.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="calendar-outline" size={48} color="rgba(255,255,255,0.15)" />
-            <Text style={styles.emptyTxt}>Нет резервов</Text>
-          </View>
-        ) : (
-          <>
-            {current.length > 0 && (
-              <>
-                <Text style={styles.sectionLabel}>ПРЕДСТОЯЩИЕ</Text>
-                {current.map(renderReserve)}
-              </>
-            )}
-            {past.length > 0 && (
-              <>
-                <Text style={[styles.sectionLabel, { marginTop: 24 }]}>ИСТОРИЯ</Text>
-                {past.map(renderReserve)}
-              </>
-            )}
-          </>
-        )}
-        <View style={{ height: 40 }} />
-      </ScrollView>
+      {loading ? (
+        <ActivityIndicator color={GREEN} style={{ marginTop: 60 }} />
+      ) : reserves.length === 0 ? (
+        <View style={styles.empty}>
+          <Ionicons name="calendar-outline" size={48} color="rgba(255,255,255,0.15)" />
+          <Text style={styles.emptyTxt}>Нет резервов</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={[
+            ...(current.length > 0 ? [{ type: 'header' as const, title: 'ПРЕДСТОЯЩИЕ' }, ...current.map(r => ({ type: 'item' as const, reserve: r }))] : []),
+            ...(past.length > 0    ? [{ type: 'header' as const, title: 'ИСТОРИЯ' },     ...past.map(r => ({ type: 'item' as const, reserve: r }))]    : []),
+          ]}
+          keyExtractor={(item, i) => item.type === 'header' ? `h-${i}` : item.reserve.id}
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.3}
+          renderItem={({ item, index }) =>
+            item.type === 'header'
+              ? <Text style={[styles.sectionLabel, index > 0 && { marginTop: 24 }]}>{item.title}</Text>
+              : renderReserve(item.reserve)
+          }
+          ListFooterComponent={
+            loadingMore
+              ? <ActivityIndicator color={GREEN} style={{ marginVertical: 16 }} />
+              : <View style={{ height: 40 }} />
+          }
+        />
+      )}
     </View>
   );
 }

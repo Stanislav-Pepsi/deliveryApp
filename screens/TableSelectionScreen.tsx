@@ -1,4 +1,4 @@
-﻿import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -10,7 +10,7 @@ import {
   View,
 } from 'react-native';
 import Text from '../components/Text';
-import { ApiTable, TableSection, createReservation, fetchSections } from '../api/reservations';
+import { ApiTable, BanquetOrderItem, TableSection, createReservation, fetchSections } from '../api/reservations';
 
 const GREEN      = '#8DBB00';
 const GREEN_DARK = '#4a6600';
@@ -25,10 +25,11 @@ interface Props {
   date: string;
   time: string;
   guests: number;
-  dishCount: number;
+  bookType: 'table' | 'banquet';
+  banquetItems: BanquetOrderItem[];
+  phone: string;
   tableId: string | null;
   onTableChange: (id: string | null) => void;
-  onAddDishesPress: () => void;
   onBack: () => void;
   onConfirm: () => void;
   authToken: string | null;
@@ -41,7 +42,8 @@ function formatDate(s: string) {
 }
 
 export default function TableSelectionScreen({
-  date, time, guests, dishCount, tableId, onTableChange, onAddDishesPress, onBack, onConfirm, authToken,
+  date, time, guests, bookType, banquetItems, phone,
+  tableId, onTableChange, onBack, onConfirm, authToken,
 }: Props) {
   const [sections, setSections] = useState<TableSection[]>([]);
   const [sectionId, setSectionId] = useState('');
@@ -56,22 +58,21 @@ export default function TableSelectionScreen({
   }, [onBack]);
 
   useEffect(() => {
-    if (!authToken) return;
     setLoading(true);
     setLoadError('');
-    fetchSections(authToken)
+    fetchSections()
       .then(data => {
         setSections(data);
         if (data.length > 0) setSectionId(data[0].id);
       })
       .catch(e => setLoadError(e.message || 'Ошибка загрузки залов'))
       .finally(() => setLoading(false));
-  }, [authToken]);
+  }, []);
 
   const currentSection = sections.find(s => s.id === sectionId);
   const allTables: ApiTable[] = sections.flatMap(s => s.tables);
   const selTable = tableId ? allTables.find(t => t.id === tableId) ?? null : null;
-  const canConfirm = !!selTable?.isAvailable;
+  const canConfirm = !!selTable;
   const guestWord  = guests === 1 ? 'ГОСТЬ' : guests < 5 ? 'ГОСТЯ' : 'ГОСТЕЙ';
 
   const handleConfirm = async () => {
@@ -79,7 +80,21 @@ export default function TableSelectionScreen({
     setConfirmError('');
     setConfirming(true);
     try {
-      await createReservation(selTable.id, date, time, guests, authToken);
+      const [d, m, y] = date.split('.');
+      const estimatedStartTime = `${y}-${m}-${d} ${time}:00`;
+      const isBanquet = bookType === 'banquet';
+      await createReservation(
+        {
+          type: isBanquet ? 'BANQUET' : 'TABLE',
+          tableIds: [selTable.id],
+          estimatedStartTime,
+          durationInMinutes: isBanquet ? 180 : 120,
+          guestsCount: guests,
+          phone,
+          items: isBanquet && banquetItems.length > 0 ? banquetItems : undefined,
+        },
+        authToken,
+      );
       onConfirm();
     } catch (e: any) {
       setConfirmError(e.message || 'Ошибка создания резерва');
@@ -143,40 +158,23 @@ export default function TableSelectionScreen({
           <View style={styles.planCard}>
             {rows.map((row, ri) => (
               <View key={ri} style={styles.gridRow}>
-                {row.map(table => {
-                  const isOcc  = !table.isAvailable;
-                  const isSel  = table.id === tableId;
+                {row.map((table, di) => {
+                  const isSel = table.id === tableId;
                   return (
                     <TouchableOpacity
                       key={table.id}
-                      style={[styles.cell, isOcc && styles.cellOcc, isSel && styles.cellSel]}
-                      onPress={() => !isOcc && onTableChange(isSel ? null : table.id)}
-                      activeOpacity={isOcc ? 1 : 0.7}
-                      disabled={isOcc}
+                      style={[styles.cell, isSel && styles.cellSel]}
+                      onPress={() => onTableChange(isSel ? null : table.id)}
+                      activeOpacity={0.7}
                     >
-                      {isOcc ? (
-                        <Text style={styles.cellX}>✕</Text>
-                      ) : (
-                        <Text style={[styles.cellNum, isSel && styles.cellNumSel]}>
-                          {table.number}
-                        </Text>
-                      )}
+                      <Text style={[styles.cellNum, isSel && styles.cellNumSel]}>
+                        {ri * 4 + di + 1}
+                      </Text>
                     </TouchableOpacity>
                   );
                 })}
               </View>
             ))}
-
-            <View style={styles.legend}>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: GREEN }]} />
-                <Text style={styles.legendTxt}>выбран</Text>
-              </View>
-              <View style={styles.legendItem}>
-                <View style={[styles.legendDot, { backgroundColor: 'rgba(255,255,255,0.1)' }]} />
-                <Text style={styles.legendTxt}>занят</Text>
-              </View>
-            </View>
           </View>
         )}
 
@@ -184,37 +182,18 @@ export default function TableSelectionScreen({
       </ScrollView>
 
       <View style={styles.bottomBar}>
-        {tableId !== null ? (
-          selTable ? (
-            <View style={styles.selCard}>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.selLabel}>СТОЛ №{selTable.number}</Text>
-                {selTable.description ? <Text style={styles.selDesc}>{selTable.description}</Text> : null}
-                <Text style={styles.selFurn}>{selTable.seats} мест</Text>
-              </View>
-              <Text style={styles.selBigNum}>{selTable.number}</Text>
+        {selTable ? (
+          <View style={styles.selCard}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.selLabel}>{selTable.name}</Text>
+              <Text style={styles.selFurn}>{selTable.seatingCapacity} мест</Text>
             </View>
-          ) : null
+            <Text style={styles.selBigNum}>{guests}</Text>
+          </View>
         ) : (
           <Text style={styles.selHint}>Нажмите на стол, чтобы выбрать</Text>
         )}
 
-        {canConfirm && (
-          <TouchableOpacity
-            style={[styles.addDishBtn, dishCount > 0 && styles.addDishBtnActive]}
-            onPress={onAddDishesPress}
-            activeOpacity={0.8}
-          >
-            <Ionicons
-              name="restaurant-outline"
-              size={15}
-              color={dishCount > 0 ? GREEN : 'rgba(255,255,255,0.5)'}
-            />
-            <Text style={[styles.addDishTxt, dishCount > 0 && styles.addDishTxtActive]}>
-              {dishCount > 0 ? `Блюда к столу · ${dishCount} позиции` : 'Добавить блюда'}
-            </Text>
-          </TouchableOpacity>
-        )}
 
         {!!confirmError && <Text style={styles.errorTxt}>{confirmError}</Text>}
 
@@ -278,16 +257,9 @@ const styles = StyleSheet.create({
     borderRadius: 12, alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
   },
-  cellOcc:     { backgroundColor: 'rgba(255,255,255,0.04)', borderColor: 'rgba(255,255,255,0.05)' },
   cellSel:     { backgroundColor: GREEN, borderColor: GREEN },
-  cellNum:     { color: 'rgba(255,255,255,0.75)', fontSize: 18, fontWeight: '700' },
+  cellNum:     { color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: '700', textAlign: 'center' },
   cellNumSel:  { color: '#fff' },
-  cellX:       { color: 'rgba(255,255,255,0.18)', fontSize: 18, fontWeight: '300' },
-
-  legend:     { flexDirection: 'row', justifyContent: 'center', gap: 18, marginTop: 8 },
-  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  legendDot:  { width: 10, height: 10, borderRadius: 3 },
-  legendTxt:  { color: 'rgba(255,255,255,0.3)', fontSize: 11 },
 
   bottomBar: {
     paddingHorizontal: 20, paddingTop: 12, paddingBottom: 46,
@@ -296,21 +268,10 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   selCard:     { flexDirection: 'row', alignItems: 'center', backgroundColor: CARD, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: BORDER },
-  selLabel:    { color: 'rgba(255,255,255,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 3 },
-  selDesc:     { color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 2 },
+  selLabel:    { color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 2 },
   selFurn:     { color: 'rgba(255,255,255,0.45)', fontSize: 12 },
   selBigNum:   { color: GREEN, fontSize: 38, fontWeight: '800', marginLeft: 8 },
   selHint:     { color: 'rgba(255,255,255,0.25)', fontSize: 13, textAlign: 'center', paddingVertical: 6 },
-
-  addDishBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7,
-    backgroundColor: 'rgba(255,255,255,0.07)',
-    borderRadius: 30, paddingVertical: 13,
-    borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
-  },
-  addDishBtnActive: { backgroundColor: 'rgba(141,187,0,0.1)', borderColor: 'rgba(141,187,0,0.3)' },
-  addDishTxt:       { color: 'rgba(255,255,255,0.5)', fontSize: 14, fontWeight: '600' },
-  addDishTxtActive: { color: GREEN },
 
   confirmBtn:    { backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 18, alignItems: 'center', borderWidth: 1, borderColor: GREEN },
   confirmBtnOff: { opacity: 0.4 },

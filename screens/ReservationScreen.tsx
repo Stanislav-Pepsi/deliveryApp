@@ -11,6 +11,7 @@ import {
   View,
 } from 'react-native';
 import Text from '../components/Text';
+import { RestaurantInfo, getHoursForDay } from '../api/restaurant';
 
 const GREEN      = '#8DBB00';
 const GREEN_DARK = '#4a6600';
@@ -24,14 +25,10 @@ const MONTHS_RU = [
   'Июль','Август','Сентябрь','Октябрь','Ноябрь','Декабрь',
 ];
 const DAYS_SHORT = ['Пн','Вт','Ср','Чт','Пт','Сб','Вс'];
-const HOURS   = Array.from({ length: 18 }, (_, i) => i + 6); // 6..23
 const MINUTES = [0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55];
-
-const COPIES      = 3;
-const HOURS_INF   = Array.from({ length: HOURS.length   * COPIES }, (_, i) => HOURS[i   % HOURS.length]);
+const COPIES  = 3;
+const MID_M   = MINUTES.length;
 const MINUTES_INF = Array.from({ length: MINUTES.length * COPIES }, (_, i) => MINUTES[i % MINUTES.length]);
-const MID_H = HOURS.length;
-const MID_M = MINUTES.length;
 
 const ITEM_H  = 54;
 const VISIBLE = 5;
@@ -60,11 +57,18 @@ const TYPES = [
 
 interface Props {
   onBack: () => void;
-  onNext: (date: string, time: string, guests: number) => void;
+  onNext: (date: string, time: string, guests: number, bookType: 'table' | 'banquet') => void;
+  restaurantInfo?: RestaurantInfo | null;
 }
 
-export default function ReservationScreen({ onBack, onNext }: Props) {
+export default function ReservationScreen({ onBack, onNext, restaurantInfo }: Props) {
   const now = new Date();
+  const todayHours = getHoursForDay(restaurantInfo?.workingHours, now);
+  const openHour   = todayHours ? Math.floor(todayHours.openMin / 60)  : 6;
+  const closeHour  = todayHours ? Math.floor(todayHours.closeMin / 60) : 23;
+  const HOURS      = Array.from({ length: Math.max(closeHour - openHour + 1, 1) }, (_, i) => i + openHour);
+  const HOURS_INF  = Array.from({ length: HOURS.length * COPIES }, (_, i) => HOURS[i % HOURS.length]);
+  const MID_H      = HOURS.length;
 
   const [bookType, setBookType] = useState('table');
   const [guests, setGuests]     = useState(2);
@@ -77,9 +81,10 @@ export default function ReservationScreen({ onBack, onNext }: Props) {
 
   // Time wheel
   const [timeOpen, setTimeOpen] = useState(false);
-  const [selHour, setSelHour]   = useState(12);
+  const defaultHour = Math.min(Math.max(12, openHour), closeHour);
+  const [selHour, setSelHour]   = useState(defaultHour);
   const [selMin, setSelMin]     = useState(0);
-  const [pendH, setPendH]       = useState(12);
+  const [pendH, setPendH]       = useState(defaultHour);
   const [pendM, setPendM]       = useState(0);
   const hourRef = useRef<ScrollView>(null);
   const minRef  = useRef<ScrollView>(null);
@@ -113,7 +118,7 @@ export default function ReservationScreen({ onBack, onNext }: Props) {
   const dateStr = selDate
     ? `${String(selDate.d).padStart(2, '0')}.${String(selDate.m + 1).padStart(2, '0')}.${selDate.y}`
     : null;
-  const timeStr = `${String(selHour).padStart(2, '0')}:${String(selMin).padStart(2, '0')}`;
+  const timeStr = `${String(selHour % 24).padStart(2, '0')}:${String(selMin).padStart(2, '0')}`;
 
   const isToday    = (d: number, m: number, y: number) =>
     d === now.getDate() && m === now.getMonth() && y === now.getFullYear();
@@ -167,8 +172,8 @@ export default function ReservationScreen({ onBack, onNext }: Props) {
         <TouchableOpacity style={styles.locationCard} activeOpacity={0.8}>
           <View style={styles.locIcon}><Ionicons name="location-outline" size={18} color={GREEN} /></View>
           <View style={{ flex: 1 }}>
-            <Text style={styles.locName}>Кафе на Тверской</Text>
-            <Text style={styles.locSub}>Тверская, 12 · ★ 4.8 · 0.4 км</Text>
+            <Text style={styles.locName}>{restaurantInfo?.name ?? 'Ресторан'}</Text>
+            <Text style={styles.locSub}>{restaurantInfo?.address ?? ''}</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.3)" />
         </TouchableOpacity>
@@ -238,7 +243,7 @@ export default function ReservationScreen({ onBack, onNext }: Props) {
           style={[styles.submitBtn, !selDate && styles.submitBtnOff]}
           activeOpacity={0.85}
           disabled={!selDate}
-          onPress={() => selDate && onNext(dateStr!, timeStr, guests)}
+          onPress={() => selDate && onNext(dateStr!, timeStr, guests, bookType as 'table' | 'banquet')}
         >
           <Text style={styles.submitTxt}>Далее</Text>
         </TouchableOpacity>
@@ -349,7 +354,7 @@ export default function ReservationScreen({ onBack, onNext }: Props) {
                   {HOURS_INF.map((h, i) => (
                     <View key={i} style={styles.wheelItem}>
                       <Text style={[styles.wheelTxt, h === pendH && styles.wheelTxtActive]}>
-                        {String(h).padStart(2, '0')}
+                        {String(h % 24).padStart(2, '0')}
                       </Text>
                     </View>
                   ))}
@@ -413,7 +418,7 @@ export default function ReservationScreen({ onBack, onNext }: Props) {
               onPress={() => { setSelHour(pendH); setSelMin(pendM); setTimeOpen(false); }}
             >
               <Text style={styles.confirmTxt}>
-                Выбрать · {String(pendH).padStart(2, '0')}:{String(pendM).padStart(2, '0')}
+                Выбрать · {String(pendH % 24).padStart(2, '0')}:{String(pendM).padStart(2, '0')}
               </Text>
             </TouchableOpacity>
             <View style={{ height: 36 }} />

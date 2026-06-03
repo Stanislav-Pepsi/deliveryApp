@@ -24,6 +24,13 @@ import ReservesScreen from './screens/ReservesScreen';
 import TableSelectionScreen from './screens/TableSelectionScreen';
 import { fetchFavorites, addFavorite, removeFavorite } from './api/favorites';
 
+export interface DishTag {
+  key: string;
+  label: string;
+  imageUrl: string | null;
+  image_url?: string | null;
+}
+
 export interface DishModifier {
   id: string;
   name: string;
@@ -63,6 +70,8 @@ export interface DishData {
   time: string;
   sizeId?: string;
   sizes: DishSize[];
+  tags?: DishTag[];
+  isAvailable: boolean;
 }
 
 export interface OrderDisplayItem {
@@ -115,7 +124,7 @@ export default function App() {
   const [selectedDish, setSelectedDish] = useState<DishData | null>(null);
   const [cart, setCart]               = useState<CartItem[]>([]);
   const [orderInfo, setOrderInfo]     = useState<OrderInfo | null>(null);
-  const [resDetails, setResDetails]   = useState<{ date: string; time: string; guests: number } | null>(null);
+  const [resDetails, setResDetails]   = useState<{ date: string; time: string; guests: number; bookType: 'table' | 'banquet' } | null>(null);
   const [profileName, setProfileName]     = useState('Алексей Морозов');
   const [banquetItems, setBanquetItems]   = useState<CartItem[]>([]);
   const [banquetDish, setBanquetDish]     = useState<DishData | null>(null);
@@ -249,9 +258,10 @@ export default function App() {
         payment={orderInfo.payment}
         address={orderInfo.address}
         orderId={orderInfo.orderId}
-        initialStatus={orderInfo.payment === 'kaspi' ? 'IN_PROGRESS' : 'CREATED'}
+        initialStatus="CREATED"
         orderItems={orderInfo.orderItems}
         authToken={authToken}
+        restaurantInfo={restaurantInfo}
         onGoHome={() => { setOrderInfo(null); setScreen('home'); }}
       />
     );
@@ -307,9 +317,10 @@ export default function App() {
         promoCode={cartPromo}
         promoDiscount={cartPromoDiscount}
         cashbackPercent={restaurantInfo?.cashbackPercent}
+        restaurantInfo={restaurantInfo}
         onBack={() => setScreen('cart')}
         onSuccess={(deliveryType, payment, orderId, bonusesSpent, deliveryFee, promoDiscount) => {
-          const total = subtotal + deliveryFee - (bonusesSpent || 0) - (promoDiscount || 0);
+          const total = subtotal + deliveryFee;
           setOrderInfo({ total, bonusesSpent: bonusesSpent || 0, deliveryFee, promoDiscount: promoDiscount || 0, deliveryType, payment, address: deliveryType === 'delivery' ? activeAddress : '', orderId, orderItems: cart.map(i => ({ name: i.dish.name, meta: [i.sizeName, ...i.extras.map(e => e.name)].filter(Boolean).join(' · ') || undefined, qty: i.qty, total: i.unitPrice * i.qty })) });
           setCart([]);
           if (authToken) refreshBalance(authToken);
@@ -322,6 +333,7 @@ export default function App() {
     return (
       <CartScreen
         items={cart}
+        dishes={dishes}
         onUpdateQty={updateCartQty}
         onBack={() => setScreen('home')}
         onCheckout={(bonuses, promo, discount) => { setCartBonuses(bonuses); setCartPromo(promo); setCartPromoDiscount(discount ?? 0); setScreen('checkout'); }}
@@ -335,10 +347,11 @@ export default function App() {
     return (
       <ReservationScreen
         onBack={() => setScreen('home')}
-        onNext={(date, time, guests) => {
-          setResDetails({ date, time, guests });
+        onNext={(date, time, guests, bookType) => {
+          setResDetails({ date, time, guests, bookType });
           setScreen('tableSelection');
         }}
+        restaurantInfo={restaurantInfo}
       />
     );
   }
@@ -348,10 +361,11 @@ export default function App() {
         date={resDetails.date}
         time={resDetails.time}
         guests={resDetails.guests}
-        dishCount={banquetItems.reduce((s, i) => s + i.qty, 0)}
+        bookType={resDetails.bookType}
+        banquetItems={banquetItems.map(i => ({ productId: i.dish.id, quantity: i.qty }))}
+        phone={userPhone}
         tableId={banquetTableId}
         onTableChange={setBanquetTableId}
-        onAddDishesPress={() => setScreen('banquetMenu')}
         onBack={() => setScreen('reservation')}
         onConfirm={() => { setBanquetItems([]); setBanquetTableId(null); setScreen('home'); }}
         authToken={authToken}
@@ -369,16 +383,13 @@ export default function App() {
         payment={selectedOrder.payment}
         address={selectedOrder.address}
         orderId={selectedOrder.id}
-        initialStatus={
-          selectedOrder.payment === 'kaspi' && selectedOrder.status === 'CREATED'
-            ? 'IN_PROGRESS'
-            : selectedOrder.status
-        }
+        initialStatus={selectedOrder.status}
         iikoNumber={selectedOrder.iikoNumber}
         orderItems={selectedOrder.orderItems}
         createdAt={selectedOrder.createdAt}
         authToken={authToken}
         mode="view"
+        restaurantInfo={restaurantInfo}
         onGoHome={() => setScreen('orders')}
       />
     );

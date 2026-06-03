@@ -1,20 +1,24 @@
 ﻿import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Animated,
   BackHandler,
   Image,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
   TextInput,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   View,
 } from 'react-native';
 import Text from '../components/Text';
 import { CartItem } from '../App';
-import { createOrder } from '../api/orders';
+import { createOrder, UnavailableItemsError } from '../api/orders';
 import { fetchLoyaltyBalance } from '../api/loyalty';
+import { RestaurantInfo, getHoursForDay } from '../api/restaurant';
 
 const GREEN = '#8DBB00';
 const GREEN_DARK = '#4a6600';
@@ -36,15 +40,94 @@ interface Props {
   promoCode?: string;
   promoDiscount?: number;
   cashbackPercent?: number | null;
+  restaurantInfo?: RestaurantInfo | null;
 }
 
-export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, onAddressPress, onBack, onSuccess, authToken, phone, cartItems, initialBonuses = 0, promoCode, promoDiscount = 0, cashbackPercent }: Props) {
+export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, onAddressPress, onBack, onSuccess, authToken, phone, cartItems, initialBonuses = 0, promoCode, promoDiscount = 0, cashbackPercent, restaurantInfo }: Props) {
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
   const [timeType, setTimeType] = useState<'asap' | 'scheduled'>('asap');
   const [payment, setPayment] = useState<'kaspi' | 'cash'>('kaspi');
   const [comment, setComment] = useState('');
   const [loyaltyBalance, setLoyaltyBalance] = useState(0);
   const [useBonus, setUseBonus] = useState(initialBonuses > 0);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<'today' | 'tomorrow'>('today');
+  const [selectedTime, setSelectedTime] = useState<string | null>(null);
+  const [timeError, setTimeError] = useState('');
+  const sheetAnim = useRef(new Animated.Value(0)).current;
+
+  // Определяем операционный день: если сейчас раньше часа открытия —
+  // мы ещё в ночной смене предыдущего дня (например 00:06 → "сегодня" = вчера)
+  const getOperationalDate = (day: 'today' | 'tomorrow') => {
+    const now  = new Date();
+    const nowH = now.getHours();
+    const todayWh = getHoursForDay(restaurantInfo?.workingHours, now);
+    const openH   = todayWh ? Math.floor(todayWh.openMin / 60) : 9;
+    const inNightShift = nowH < openH; // до открытия — ещё старый рабочий день
+    const d = new Date();
+    if (inNightShift) {
+      if (day === 'today') d.setDate(d.getDate() - 1); // "сегодня" = вчерашний рабочий день
+      // "завтра" = текущий календарный день (d без изменений)
+    } else {
+      if (day === 'tomorrow') d.setDate(d.getDate() + 1);
+    }
+    return d;
+  };
+
+  const getDayDate = getOperationalDate;
+
+  const openTimePicker = () => {
+    setShowTimePicker(true);
+    Animated.spring(sheetAnim, { toValue: 1, useNativeDriver: true, bounciness: 4 }).start();
+  };
+
+  const closeTimePicker = () => {
+    Animated.timing(sheetAnim, { toValue: 0, duration: 220, useNativeDriver: true }).start(() => setShowTimePicker(false));
+  };
+
+  const confirmTime = (slot: string) => {
+    setSelectedTime(slot);
+    closeTimePicker();
+  };
+
+  const SHEET_BG = '#161a13';
+
+  const generateSlots = (day: 'today' | 'tomorrow'): string[] => {
+    const operDate = getOperationalDate(day);
+    const hours    = getHoursForDay(restaurantInfo?.workingHours, operDate);
+    if (restaurantInfo?.workingHours && !hours) return [];
+    const openMin  = hours?.openMin  ?? 10 * 60;
+    const closeMin = hours?.closeMin ?? 22 * 60;
+    const slots: string[] = [];
+    const now = new Date();
+    for (let min = openMin; min < closeMin; min += 30) {
+      const realMin = min % (24 * 60);
+      const h = Math.floor(realMin / 60);
+      const m = realMin % 60;
+      if (day === 'today') {
+        // строим дату слота от операционного дня (не от текущего календарного)
+        const slotDate = new Date(operDate);
+        slotDate.setHours(h, m, 0, 0);
+        if (min >= 24 * 60) slotDate.setDate(slotDate.getDate() + 1);
+        if (slotDate.getTime() < now.getTime() + 30 * 60 * 1000) continue;
+      }
+      slots.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
+    }
+    return slots;
+  };
+
+  const buildCompleteBefore = (): string | undefined => {
+    if (timeType !== 'scheduled' || !selectedTime) return undefined;
+    const [h, m] = selectedTime.split(':').map(Number);
+    const wh     = getHoursForDay(restaurantInfo?.workingHours, getDayDate(selectedDay));
+    const openH  = wh ? Math.floor(wh.openMin / 60) : 0;
+    const date   = getDayDate(selectedDay);
+    // послеполуночное время — следующие сутки относительно выбранного дня
+    if (h < openH) date.setDate(date.getDate() + 1);
+    date.setHours(h, m, 0, 0);
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(h)}:${pad(m)}:00`;
+  };
 
   useEffect(() => {
     if (!authToken) return;
@@ -73,10 +156,15 @@ export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, o
     setSubmitting(true);
     setSubmitError('');
     try {
-      const order = await createOrder(cartItems, deliveryType, payment, address ?? '', comment, authToken, phone, bonusesToSpend || undefined, promoCode);
+      const order = await createOrder(cartItems, deliveryType, payment, address ?? '', comment, authToken, phone, bonusesToSpend || undefined, promoCode, buildCompleteBefore());
       onSuccess(deliveryType, payment, order.orderId, bonusesToSpend, order.deliveryFee ?? deliveryFee, order.promoDiscount ?? promoDiscount);
     } catch (e: any) {
-      setSubmitError(e.message || 'Ошибка оформления заказа');
+      if (e instanceof UnavailableItemsError) {
+        const names = e.productIds.map(id => cartItems.find(i => i.dish.id === id)?.dish.name ?? id).join(', ');
+        setSubmitError(`Недоступно: ${names}. Вернитесь в корзину и удалите эти позиции.`);
+      } else {
+        setSubmitError(e.message || 'Ошибка оформления заказа');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -165,14 +253,23 @@ export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, o
           </TouchableOpacity>
           <TouchableOpacity
             style={[styles.timeCard, timeType === 'scheduled' && styles.timeCardActive]}
-            onPress={() => setTimeType('scheduled')}
+            onPress={() => { setTimeType('scheduled'); openTimePicker(); }}
             activeOpacity={0.8}
           >
             <Text style={[styles.timeCardLabel, timeType === 'scheduled' && styles.timeCardLabelActive]}>
               НА ВРЕМЯ
             </Text>
-            <Text style={styles.timeCardMain}>Выбрать</Text>
-            <Text style={styles.timeCardSub}>Сегодня / завтра</Text>
+            {selectedTime && timeType === 'scheduled' ? (
+              <>
+                <Text style={styles.timeCardMain}>{selectedTime}</Text>
+                <Text style={styles.timeCardSub}>{selectedDay === 'today' ? 'Сегодня' : 'Завтра'}</Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.timeCardMain}>Выбрать</Text>
+                <Text style={styles.timeCardSub}>Сегодня / завтра</Text>
+              </>
+            )}
           </TouchableOpacity>
         </View>
 
@@ -248,10 +345,73 @@ export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, o
         >
           {submitting
             ? <ActivityIndicator color="#fff" />
-            : <Text style={styles.payBtnTxt}>{payment === 'kaspi' ? 'Оплатить картой' : 'Оформить заказ'}</Text>
+            : <Text style={styles.payBtnTxt}>{'Оформить заказ'}</Text>
           }
         </TouchableOpacity>
       </View>
+      {/* Time picker modal */}
+      {showTimePicker && (
+        <Modal transparent animationType="none" onRequestClose={closeTimePicker}>
+          <TouchableWithoutFeedback onPress={closeTimePicker}>
+            <View style={styles.modalOverlay} />
+          </TouchableWithoutFeedback>
+          <Animated.View style={[styles.timeSheet, {
+            transform: [{ translateY: sheetAnim.interpolate({ inputRange: [0, 1], outputRange: [500, 0] }) }],
+          }]}>
+            <View style={styles.sheetHandle} />
+            <Text style={styles.sheetTitle}>Выберите время</Text>
+
+            {/* Day tabs */}
+            <View style={styles.dayTabs}>
+              {(['today', 'tomorrow'] as const).map(day => (
+                <TouchableOpacity
+                  key={day}
+                  style={[styles.dayTab, selectedDay === day && styles.dayTabActive]}
+                  onPress={() => { setSelectedDay(day); setSelectedTime(null); setTimeError(''); }}
+                  activeOpacity={0.8}
+                >
+                  <Text style={[styles.dayTabTxt, selectedDay === day && styles.dayTabTxtActive]}>
+                    {day === 'today' ? 'Сегодня' : 'Завтра'}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Time slots */}
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.slotsGrid}>
+              {generateSlots(selectedDay).length === 0 ? (
+                <Text style={styles.noSlotsTxt}>
+                  {restaurantInfo?.workingHours && !getHoursForDay(restaurantInfo.workingHours, getDayDate(selectedDay))
+                    ? 'В этот день ресторан не работает'
+                    : 'Нет доступных слотов на это время'}
+                </Text>
+              ) : (
+                <View style={styles.slotsWrap}>
+                  {generateSlots(selectedDay).map(slot => (
+                    <TouchableOpacity
+                      key={slot}
+                      style={[styles.slotChip, selectedTime === slot && styles.slotChipActive]}
+                      onPress={() => confirmTime(slot)}
+                      activeOpacity={0.8}
+                    >
+                      <Text style={[styles.slotTxt, selectedTime === slot && styles.slotTxtActive]}>{slot}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
+
+            {!!timeError && <Text style={styles.timeErrorTxt}>{timeError}</Text>}
+            {selectedTime && (
+              <TouchableOpacity style={styles.confirmBtn} onPress={closeTimePicker} activeOpacity={0.85}>
+                <Text style={styles.confirmBtnTxt}>
+                  {`Подтвердить · ${selectedDay === 'today' ? 'Сегодня' : 'Завтра'} ${selectedTime}`}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </Animated.View>
+        </Modal>
+      )}
     </View>
   );
 }
@@ -428,4 +588,47 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   payBtnTxt: { color: '#fff', fontSize: 17, fontWeight: '700' },
+
+  modalOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.55)' },
+  timeSheet: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: '#161a13',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingBottom: 46,
+    maxHeight: '75%',
+  },
+  sheetHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignSelf: 'center', marginTop: 12, marginBottom: 16,
+  },
+  sheetTitle: { color: '#fff', fontSize: 17, fontWeight: '700', textAlign: 'center', marginBottom: 16 },
+
+  dayTabs: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.07)', borderRadius: 12, padding: 4, marginBottom: 16 },
+  dayTab: { flex: 1, paddingVertical: 10, borderRadius: 9, alignItems: 'center' },
+  dayTabActive: { backgroundColor: GREEN_DARK },
+  dayTabTxt: { color: 'rgba(255,255,255,0.45)', fontWeight: '600', fontSize: 15 },
+  dayTabTxtActive: { color: '#fff' },
+
+  slotsGrid: { paddingBottom: 16 },
+  slotsWrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  slotChip: {
+    paddingHorizontal: 18, paddingVertical: 12,
+    borderRadius: 12, borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.12)',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+  },
+  slotChipActive: { borderColor: GREEN, backgroundColor: 'rgba(141,187,0,0.12)' },
+  slotTxt: { color: 'rgba(255,255,255,0.6)', fontSize: 15, fontWeight: '600' },
+  slotTxtActive: { color: GREEN },
+  noSlotsTxt: { color: 'rgba(255,255,255,0.35)', fontSize: 14, textAlign: 'center', marginTop: 20 },
+  timeErrorTxt: {
+    color: '#e05252', fontSize: 12, fontWeight: '600',
+    textAlign: 'center', marginBottom: 8,
+  },
+  confirmBtn: {
+    backgroundColor: GREEN, borderRadius: 30,
+    paddingVertical: 16, alignItems: 'center', marginTop: 4,
+  },
+  confirmBtnTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });

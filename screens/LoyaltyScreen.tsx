@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  FlatList,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -40,17 +41,38 @@ export default function LoyaltyScreen({ onBack, authToken }: Props) {
   const [balance, setBalance]           = useState<LoyaltyBalance | null>(null);
   const [transactions, setTransactions] = useState<LoyaltyTransaction[]>([]);
   const [loading, setLoading]           = useState(true);
+  const [loadingMore, setLoadingMore]   = useState(false);
+  const [hasMore, setHasMore]           = useState(false);
+  const pageRef = useRef(1);
 
   useEffect(() => {
     if (!authToken) { setLoading(false); return; }
     Promise.all([
       fetchLoyaltyBalance(authToken),
-      fetchLoyaltyTransactions(authToken),
+      fetchLoyaltyTransactions(authToken, 1, 20),
     ])
-      .then(([b, t]) => { setBalance(b); setTransactions(t); })
+      .then(([b, res]) => {
+        setBalance(b);
+        setTransactions(res.data);
+        setHasMore(20 < res.total);
+        pageRef.current = 1;
+      })
       .catch(() => {})
       .finally(() => setLoading(false));
   }, [authToken]);
+
+  const loadMore = async () => {
+    if (loadingMore || !hasMore || !authToken) return;
+    setLoadingMore(true);
+    try {
+      const nextPage = pageRef.current + 1;
+      const res = await fetchLoyaltyTransactions(authToken, nextPage, 20);
+      setTransactions(prev => [...prev, ...res.data]);
+      setHasMore(nextPage * 20 < res.total);
+      pageRef.current = nextPage;
+    } catch {}
+    setLoadingMore(false);
+  };
 
   return (
     <View style={styles.root}>
@@ -86,33 +108,32 @@ export default function LoyaltyScreen({ onBack, authToken }: Props) {
         ) : (
           <>
             <Text style={styles.sectionLabel}>ИСТОРИЯ ОПЕРАЦИЙ</Text>
-            <View style={styles.listCard}>
-              {transactions.map((t, i) => {
+            <FlatList
+              data={transactions}
+              keyExtractor={t => t.id}
+              scrollEnabled={false}
+              onEndReached={loadMore}
+              onEndReachedThreshold={0.3}
+              style={styles.listCard}
+              renderItem={({ item: t, index: i }) => {
                 const cfg = TYPE_CONFIG[t.type] ?? { label: t.type, color: '#fff', sign: '' };
                 const amount = parseFloat(t.amount);
                 return (
-                  <View key={t.id} style={[styles.row, i < transactions.length - 1 && styles.rowDivider]}>
+                  <View style={[styles.row, i < transactions.length - 1 && styles.rowDivider]}>
                     <View style={[styles.iconBox, { backgroundColor: cfg.color === GREEN ? 'rgba(141,187,0,0.12)' : 'rgba(224,82,82,0.12)' }]}>
-                      <Ionicons
-                        name={cfg.sign === '+' ? 'arrow-up' : 'arrow-down'}
-                        size={16}
-                        color={cfg.color}
-                      />
+                      <Ionicons name={cfg.sign === '+' ? 'arrow-up' : 'arrow-down'} size={16} color={cfg.color} />
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
                       <Text style={styles.rowLabel}>{cfg.label}</Text>
                       <Text style={styles.rowDate}>{formatDate(t.createdAt)}</Text>
-                      {t.expiresAt && (
-                        <Text style={styles.rowExpiry}>Сгорят: {formatDate(t.expiresAt)}</Text>
-                      )}
+                      {t.expiresAt && <Text style={styles.rowExpiry}>Сгорят: {formatDate(t.expiresAt)}</Text>}
                     </View>
-                    <Text style={[styles.rowAmount, { color: cfg.color }]}>
-                      {cfg.sign}{amount.toLocaleString('ru-RU')}
-                    </Text>
+                    <Text style={[styles.rowAmount, { color: cfg.color }]}>{cfg.sign}{amount.toLocaleString('ru-RU')}</Text>
                   </View>
                 );
-              })}
-            </View>
+              }}
+              ListFooterComponent={loadingMore ? <ActivityIndicator color={GREEN} style={{ marginVertical: 12 }} /> : null}
+            />
           </>
         )}
 

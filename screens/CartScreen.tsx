@@ -11,7 +11,7 @@ import {
   View,
 } from 'react-native';
 import Text from '../components/Text';
-import { CartItem } from '../App';
+import { CartItem, DishData } from '../App';
 import { validatePromo, calcDiscount, promoLabel, PromoResult } from '../api/promos';
 
 const GREEN = '#8DBB00';
@@ -20,6 +20,7 @@ const CARD = 'rgba(255,255,255,0.06)';
 
 interface Props {
   items: CartItem[];
+  dishes?: DishData[];
   onUpdateQty: (dishId: string, size: string, qty: number) => void;
   onBack: () => void;
   onCheckout: (bonusesToSpend: number, promoCode?: string, promoDiscount?: number) => void;
@@ -28,7 +29,7 @@ interface Props {
   authToken?: string | null;
 }
 
-export default function CartScreen({ items, onUpdateQty, onBack, onCheckout, loyaltyBalance, deliveryFeeAmount, authToken }: Props) {
+export default function CartScreen({ items, dishes, onUpdateQty, onBack, onCheckout, loyaltyBalance, deliveryFeeAmount, authToken }: Props) {
   const [promo, setPromo] = useState('');
   const [promoResult, setPromoResult] = useState<PromoResult | null>(null);
   const [promoError, setPromoError] = useState('');
@@ -42,6 +43,9 @@ export default function CartScreen({ items, onUpdateQty, onBack, onCheckout, loy
     });
     return () => sub.remove();
   }, [onBack]);
+
+  const dishAvailabilityMap = new Map((dishes ?? []).map(d => [d.id, d.isAvailable]));
+  const hasUnavailable = items.some(item => dishAvailabilityMap.get(item.dish.id) === false);
 
   const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.qty, 0);
   const delivery = items.length > 0 && deliveryFeeAmount ? deliveryFeeAmount : 0;
@@ -102,23 +106,26 @@ export default function CartScreen({ items, onUpdateQty, onBack, onCheckout, loy
           <>
             {/* Items */}
             {items.map(item => {
+              const itemUnavailable = dishAvailabilityMap.get(item.dish.id) === false;
               return (
-                <View key={`${item.dish.id}-${item.size}`} style={styles.itemCard}>
+                <View key={`${item.dish.id}-${item.size}`} style={[styles.itemCard, itemUnavailable && styles.itemCardUnavailable]}>
                   {item.dish.img
-                    ? <Image source={item.dish.img} style={styles.itemImg} resizeMode="cover" />
-                    : <View style={[styles.itemImg, { backgroundColor: '#1a2010' }]} />
+                    ? <Image source={item.dish.img} style={[styles.itemImg, itemUnavailable && { opacity: 0.4 }]} resizeMode="cover" />
+                    : <View style={[styles.itemImg, { backgroundColor: '#1a2010' }, itemUnavailable && { opacity: 0.4 }]} />
                   }
                   <View style={styles.itemInfo}>
-                    <Text style={styles.itemName}>{item.dish.name}</Text>
-                    <Text style={styles.itemMeta}>
-                      {item.dish.category}{item.sizeName ? ` · ${item.sizeName}` : ''}
-                    </Text>
-                    <Text style={styles.itemPrice}>{(item.unitPrice * item.qty).toLocaleString('ru-RU')} ₸</Text>
+                    <Text style={[styles.itemName, itemUnavailable && { opacity: 0.5 }]}>{item.dish.name}</Text>
+                    {itemUnavailable
+                      ? <Text style={styles.itemUnavailableTxt}>Уже готовим</Text>
+                      : <Text style={styles.itemMeta}>{item.dish.category}{item.sizeName ? ` · ${item.sizeName}` : ''}</Text>
+                    }
+                    {!itemUnavailable && <Text style={styles.itemPrice}>{(item.unitPrice * item.qty).toLocaleString('ru-RU')} ₸</Text>}
                   </View>
-                  <View style={styles.qtyRow}>
+                  <View style={[styles.qtyRow, itemUnavailable && { opacity: 0.3 }]}>
                     <TouchableOpacity
                       style={styles.qtyBtn}
                       onPress={() => onUpdateQty(item.dish.id, item.size, item.qty - 1)}
+                      disabled={itemUnavailable}
                     >
                       <Text style={styles.qtyBtnTxt}>−</Text>
                     </TouchableOpacity>
@@ -126,6 +133,7 @@ export default function CartScreen({ items, onUpdateQty, onBack, onCheckout, loy
                     <TouchableOpacity
                       style={styles.qtyBtn}
                       onPress={() => onUpdateQty(item.dish.id, item.size, item.qty + 1)}
+                      disabled={itemUnavailable}
                     >
                       <Text style={styles.qtyBtnTxt}>+</Text>
                     </TouchableOpacity>
@@ -158,12 +166,12 @@ export default function CartScreen({ items, onUpdateQty, onBack, onCheckout, loy
                 autoCapitalize="characters"
               />
               {promoResult ? (
-                <TouchableOpacity style={[styles.promoBtn, { backgroundColor: 'rgba(255,255,255,0.1)' }]} onPress={clearPromo} activeOpacity={0.85}>
+                <TouchableOpacity style={[styles.bonusToggle, { borderColor: 'rgba(255,255,255,0.15)' }]} onPress={clearPromo} activeOpacity={0.85}>
                   <Ionicons name="close" size={16} color="#fff" />
                 </TouchableOpacity>
               ) : (
-                <TouchableOpacity style={[styles.promoBtn, (useBonus || promoLoading) && { opacity: 0.4 }]} onPress={applyPromo} activeOpacity={0.85} disabled={useBonus || promoLoading || !promo.trim()}>
-                  <Text style={styles.promoBtnTxt}>{promoLoading ? '...' : 'Применить'}</Text>
+                <TouchableOpacity style={[styles.bonusToggle, promo.trim().length > 0 && { backgroundColor: GREEN, borderColor: GREEN }, (useBonus || promoLoading) && { opacity: 0.4 }]} onPress={applyPromo} activeOpacity={0.85} disabled={useBonus || promoLoading || !promo.trim()}>
+                  <Text style={[styles.bonusToggleTxt, promo.trim().length > 0 && styles.promoBtnTxt]}>{promoLoading ? '...' : 'Применить'}</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -184,8 +192,8 @@ export default function CartScreen({ items, onUpdateQty, onBack, onCheckout, loy
                       <Text style={styles.bonusSub}>{loyaltyBalance.toLocaleString('ru-RU')} доступно</Text>
                     </View>
                   </View>
-                  <View style={[styles.bonusToggle, useBonus && styles.bonusToggleActive]}>
-                    <Text style={[styles.bonusToggleTxt, useBonus && styles.bonusToggleTxtActive]}>
+                  <View style={[styles.promoBtn, useBonus && { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
+                    <Text style={styles.promoBtnTxt}>
                       {useBonus ? `−${bonusesToSpend.toLocaleString('ru-RU')}` : 'Применить'}
                     </Text>
                   </View>
@@ -220,7 +228,10 @@ export default function CartScreen({ items, onUpdateQty, onBack, onCheckout, loy
               <Text style={styles.totalVal}>{finalTotal.toLocaleString('ru-RU')} ₸</Text>
             </View>
 
-            <TouchableOpacity style={styles.checkoutBtn} activeOpacity={0.85} onPress={() => onCheckout(bonusesToSpend, promoResult?.code, promoDiscount || undefined)}>
+            {hasUnavailable && (
+              <Text style={styles.unavailableWarning}>Уберите недоступные позиции перед оформлением</Text>
+            )}
+            <TouchableOpacity style={[styles.checkoutBtn, hasUnavailable && { opacity: 0.4 }]} activeOpacity={0.85} onPress={() => { if (!hasUnavailable) onCheckout(bonusesToSpend, promoResult?.code, promoDiscount || undefined); }} disabled={hasUnavailable}>
               <Text style={styles.checkoutTxt}>Оформить заказ</Text>
             </TouchableOpacity>
           </View>
@@ -282,6 +293,9 @@ const styles = StyleSheet.create({
   itemName: { color: '#fff', fontWeight: '700', fontSize: 15, marginBottom: 3 },
   itemMeta: { color: 'rgba(255,255,255,0.4)', fontSize: 12, marginBottom: 5 },
   itemPrice: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  itemCardUnavailable: { borderWidth: 1, borderColor: 'rgba(224,82,82,0.3)', backgroundColor: 'rgba(224,82,82,0.04)' },
+  itemUnavailableTxt: { color: '#e05252', fontSize: 12, fontWeight: '600', marginBottom: 4 },
+  unavailableWarning: { color: '#e05252', fontSize: 12, fontWeight: '600', textAlign: 'center', marginBottom: 4 },
 
   qtyRow: {
     flexDirection: 'row',

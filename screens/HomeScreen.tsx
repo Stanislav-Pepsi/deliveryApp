@@ -24,6 +24,12 @@ const PROMO_STEP = PROMO_W + 12;
 
 const GLASS_BG = 'rgba(255,255,255,0.06)';
 
+const TAG_COLORS: Record<string, string> = {
+  tag_new:   '#8DBB00',
+  tag_hit:   '#7B2FBE',
+  tag_spicy: '#E8242E',
+};
+
 const PROMOS = [
   { id: '1', tag: 'ПОПРОБУЙТЕ НОВОЕ', title: 'Сет «Базилик»', sub: '–15% до 31 марта', blob: 'rgba(200,30,30,0.4)', img: null },
   { id: '2', tag: 'ЗАВТРАКИ', title: 'Кофе на своё', sub: 'Каждый день с 8:00', blob: 'rgba(140,20,20,0.35)', img: null },
@@ -144,16 +150,16 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
 
   useEffect(() => {
     if (!authToken) return;
-    fetchOrders(authToken)
-      .then(all => setActiveOrders(all.filter(o => ACTIVE_STATUSES.has(o.status))))
+    fetchOrders(authToken, 1, 50)
+      .then(res => setActiveOrders(res.data.filter(o => ACTIVE_STATUSES.has(o.status))))
       .catch(() => {});
   }, [authToken]);
 
   useEffect(() => {
     if (!authToken) return;
     const interval = setInterval(() => {
-      fetchOrders(authToken)
-        .then(all => setActiveOrders(all.filter(o => ACTIVE_STATUSES.has(o.status))))
+      fetchOrders(authToken, 1, 50)
+        .then(res => setActiveOrders(res.data.filter(o => ACTIVE_STATUSES.has(o.status))))
         .catch(() => {});
     }, 15000);
     return () => clearInterval(interval);
@@ -171,23 +177,42 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
         return updated.filter(o => ACTIVE_STATUSES.has(o.status));
       });
     });
+    socket.on('stop_list_updated', (payload: { items: { productId: string; balance: number | null }[] }) => {
+      const stoppedIds = new Set(payload.items.filter(i => i.balance === 0 || i.balance === null).map(i => i.productId));
+      const restoredIds = new Set(payload.items.filter(i => i.balance !== 0 && i.balance !== null).map(i => i.productId));
+      setDishes(prev => {
+        const updated = prev.map(d => {
+          if (stoppedIds.has(d.id)) return { ...d, isAvailable: false };
+          if (restoredIds.has(d.id)) return { ...d, isAvailable: true };
+          return d;
+        });
+        onDishesLoaded?.(updated);
+        return updated;
+      });
+    });
     return () => { socket.disconnect(); };
   }, [authToken]);
 
-  const catIds = ['all', ...Array.from(new Set(dishes.map(d => d.category).filter(Boolean)))];
+  const uniqueDishes = dishes.filter((d, i, arr) => arr.findIndex(x => x.id === d.id) === i);
+  const catIds = ['all', ...Array.from(new Set(uniqueDishes.map(d => d.category).filter(Boolean)))];
   const dynCats = catIds.map(id => ({
     id,
     label: id === 'all' ? 'ВСЕ' : id,
-    count: id === 'all' ? dishes.length : dishes.filter(d => d.category === id).length,
+    count: id === 'all' ? uniqueDishes.length : uniqueDishes.filter(d => d.category === id).length,
   }));
-  const filtered = dishes
+  const filtered = uniqueDishes
     .filter(d => {
       const q = search.toLowerCase().trim();
       if (q && !d.name.toLowerCase().includes(q) && !d.desc.toLowerCase().includes(q)) return false;
       if (activeCat !== 'all' && d.category !== activeCat) return false;
       return true;
     })
-    .sort((a, b) => (favorites.has(b.id) ? 1 : 0) - (favorites.has(a.id) ? 1 : 0));
+    .sort((a, b) => {
+      const aAvail = a.isAvailable !== false ? 0 : 1;
+      const bAvail = b.isAvailable !== false ? 0 : 1;
+      if (aAvail !== bAvail) return aAvail - bAvail;
+      return (favorites.has(b.id) ? 1 : 0) - (favorites.has(a.id) ? 1 : 0);
+    });
 
   return (
     <View style={styles.root}>
@@ -216,11 +241,9 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
           const isDelivery = o.orderType === 'DELIVERY';
           const steps = isDelivery ? STEPS_DELIVERY : STEPS_PICKUP;
           const icons = isDelivery ? ICONS_DELIVERY : ICONS_PICKUP;
-          const isCardPayment = o.paymentType === 'CARD' || o.paymentType === 'KASPI';
-          const displayStatus = (o.status === 'CREATED' && isCardPayment) ? 'IN_PROGRESS' : o.status;
-          const currentStep = (!isDelivery && displayStatus === 'READY')
+          const currentStep = (!isDelivery && o.status === 'READY')
             ? 2
-            : (STATUS_STEP[displayStatus] ?? 0);
+            : (STATUS_STEP[o.status] ?? 0);
           let addressText = '';
           if (o.deliveryAddress) {
             try { const p = JSON.parse(o.deliveryAddress); addressText = [p.streetName, p.house].filter(Boolean).join(', '); }
@@ -230,13 +253,13 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
           const summary: OrderSummary = {
             id: o.id,
             iikoNumber: o.iikoNumber,
-            status: displayStatus,
+            status: o.status,
             total,
             bonusesSpent: o.bonusesSpent ? parseFloat(o.bonusesSpent) : null,
             deliveryFee: o.deliveryFee ? parseFloat(o.deliveryFee) : null,
             promoDiscount: o.promoDiscount ? parseFloat(o.promoDiscount) : null,
             deliveryType: isDelivery ? 'delivery' : 'pickup',
-            payment: o.paymentType === 'CASH' ? 'cash' : 'kaspi',
+            payment: o.paymentType === 'SCASH' ? 'cash' : 'kaspi',
             address: addressText,
             orderItems: (o.items ?? []).map(i => ({ name: (i as any).name || 'Позиция', qty: i.amount, total: i.price * i.amount })),
           };
@@ -347,33 +370,55 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
           <View style={styles.grid}>
             {filtered.map((d) => {
               const isFav = favorites.has(d.id);
+              const unavailable = d.isAvailable === false;
               return (
-                <TouchableOpacity key={d.id} activeOpacity={0.85} onPress={() => onDishPress(d)}>
-                  <View style={styles.dishCard}>
+                <TouchableOpacity key={d.id} activeOpacity={unavailable ? 1 : 0.85} onPress={() => { if (!unavailable) onDishPress(d); }}>
+                  <View style={[styles.dishCard, unavailable && styles.dishCardUnavailable]}>
                     <View>
                       {d.img
-                        ? <Image source={d.img} style={styles.dishImg} resizeMode="cover" />
-                        : <View style={[styles.dishImg, { backgroundColor: 'rgba(255,255,255,0.04)' }]} />
+                        ? <Image source={d.img} style={[styles.dishImg, unavailable && { opacity: 0.35 }]} resizeMode="cover" />
+                        : <View style={[styles.dishImg, { backgroundColor: 'rgba(255,255,255,0.04)' }, unavailable && { opacity: 0.35 }]} />
                       }
-                      <TouchableOpacity
-                        style={styles.heartBtn}
-                        onPress={() => toggleFavorite(d.id)}
-                        activeOpacity={0.75}
-                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                      >
-                        <Ionicons
-                          name={isFav ? 'heart' : 'heart-outline'}
-                          size={22}
-                          color={isFav ? '#e05252' : 'rgba(255,255,255,0.6)'}
-                        />
-                      </TouchableOpacity>
+                      {unavailable && (
+                        <View style={styles.unavailableOverlay}>
+                          <Text style={styles.unavailableOverlayTxt}>Нет в наличии</Text>
+                        </View>
+                      )}
+                      {!unavailable && (d.tags ?? []).length > 0 && (
+                        <View style={styles.tagRow}>
+                          {(d.tags ?? []).map(tag => {
+                            const color = TAG_COLORS[tag.key] ?? '#555';
+                            return (
+                              <View key={tag.key} style={[styles.tagBadge, { backgroundColor: color }]}>
+                                <Text style={styles.tagTxt}>{tag.label.toUpperCase()}</Text>
+                              </View>
+                            );
+                          })}
+                        </View>
+                      )}
+                      {!unavailable && (
+                        <TouchableOpacity
+                          style={styles.heartBtn}
+                          onPress={() => toggleFavorite(d.id)}
+                          activeOpacity={0.75}
+                          hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                        >
+                          <Ionicons
+                            name={isFav ? 'heart' : 'heart-outline'}
+                            size={22}
+                            color={isFav ? '#e05252' : 'rgba(255,255,255,0.6)'}
+                          />
+                        </TouchableOpacity>
+                      )}
                     </View>
                     <View style={styles.dishBody}>
-                      <Text style={styles.dishName}>{d.name}</Text>
-                      <Text style={styles.dishWeight}>{d.weight}</Text>
-                      <Text style={styles.dishDesc} numberOfLines={3}>{d.desc}</Text>
-                      <View style={styles.priceBtn}>
-                        <Text style={styles.priceTxt}>{d.price}</Text>
+                      <Text style={[styles.dishName, unavailable && { opacity: 0.45 }]}>{d.name}</Text>
+                      <Text style={[styles.dishWeight, unavailable && { opacity: 0.3 }]}>{d.weight}</Text>
+                      <Text style={[styles.dishDesc, unavailable && { opacity: 0.25 }]} numberOfLines={3}>{d.desc}</Text>
+                      <View style={[styles.priceBtn, unavailable && styles.priceBtnUnavailable]}>
+                        <Text style={[styles.priceTxt, unavailable && styles.priceTxtUnavailable]}>
+                          {unavailable ? 'Уже готовим' : d.price}
+                        </Text>
                       </View>
                     </View>
                   </View>
@@ -454,24 +499,30 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
             {filtered.length === 0 && search.length > 0 && (
               <Text style={styles.sheetEmpty}>Ничего не найдено</Text>
             )}
-            {filtered.map(dish => (
-              <TouchableOpacity
-                key={dish.id}
-                style={styles.sheetDishRow}
-                activeOpacity={0.75}
-                onPress={() => { closeSearch(); onDishPress(dish); }}
-              >
-                {dish.img
-                  ? <Image source={dish.img} style={styles.sheetDishImg} resizeMode="cover" />
-                  : <View style={[styles.sheetDishImg, { backgroundColor: 'rgba(255,255,255,0.08)' }]} />
-                }
-                <View style={styles.sheetDishInfo}>
-                  <Text style={styles.sheetDishName} numberOfLines={1}>{dish.name}</Text>
-                  <Text style={styles.sheetDishMeta}>{dish.weight} · {dish.price}</Text>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color="rgba(0,0,0,0.5)" />
-              </TouchableOpacity>
-            ))}
+            {filtered.map(dish => {
+              const dishUnavailable = dish.isAvailable === false;
+              return (
+                <TouchableOpacity
+                  key={dish.id}
+                  style={styles.sheetDishRow}
+                  activeOpacity={dishUnavailable ? 1 : 0.75}
+                  onPress={() => { if (!dishUnavailable) { closeSearch(); onDishPress(dish); } }}
+                >
+                  {dish.img
+                    ? <Image source={dish.img} style={[styles.sheetDishImg, dishUnavailable && { opacity: 0.4 }]} resizeMode="cover" />
+                    : <View style={[styles.sheetDishImg, { backgroundColor: 'rgba(255,255,255,0.08)' }, dishUnavailable && { opacity: 0.4 }]} />
+                  }
+                  <View style={styles.sheetDishInfo}>
+                    <Text style={[styles.sheetDishName, dishUnavailable && { opacity: 0.5 }]} numberOfLines={1}>{dish.name}</Text>
+                    <Text style={[styles.sheetDishMeta, dishUnavailable && { opacity: 0.4 }]}>{dish.weight} · {dish.price}</Text>
+                  </View>
+                  {dishUnavailable
+                    ? <View style={styles.sheetUnavailableBadge}><Text style={styles.sheetUnavailableTxt}>Нет в наличии</Text></View>
+                    : <Ionicons name="chevron-forward" size={16} color="rgba(0,0,0,0.5)" />
+                  }
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </Animated.View>
       )}
@@ -607,6 +658,15 @@ const styles = StyleSheet.create({
     backgroundColor: '#191414',
   },
   dishImg: { width: '100%', height: 130 },
+  tagRow: {
+    position: 'absolute', top: 8, left: 8,
+    flexDirection: 'column', gap: 4,
+  },
+  tagBadge: {
+    borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3,
+    alignSelf: 'flex-start',
+  },
+  tagTxt: { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
   heartBtn: {
     position: 'absolute', top: 8, right: 8,
     width: 38, height: 38, borderRadius: 19,
@@ -625,6 +685,18 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   priceTxt: { color: '#FFFFFF', fontWeight: '700', fontSize: 13 },
+  dishCardUnavailable: { opacity: 0.75 },
+  priceBtnUnavailable: { backgroundColor: 'rgba(255,255,255,0.07)' },
+  priceTxtUnavailable: { color: 'rgba(255,255,255,0.35)', fontWeight: '600', fontSize: 12 },
+  unavailableOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  unavailableOverlayTxt: {
+    color: '#fff', fontSize: 13, fontWeight: '700',
+    textAlign: 'center',
+    textShadowColor: 'rgba(0,0,0,0.8)', textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 4,
+  },
 
   bottomNav: {
     position: 'absolute',
@@ -739,4 +811,9 @@ const styles = StyleSheet.create({
 
   sheetDishName: { color: '#FFFFFF', fontSize: 14, fontWeight: '600', marginBottom: 3 },
   sheetDishMeta: { color: 'rgba(255,255,255,0.45)', fontSize: 12 },
+  sheetUnavailableBadge: {
+    backgroundColor: 'rgba(224,82,82,0.15)',
+    borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  sheetUnavailableTxt: { color: '#e05252', fontSize: 11, fontWeight: '700' },
 });

@@ -27,14 +27,14 @@ export async function fetchLoyaltyBalance(token: string): Promise<LoyaltyBalance
   return data;
 }
 
-export async function fetchLoyaltyTransactions(token: string): Promise<LoyaltyTransaction[]> {
-  const res = await fetch(`${BASE_URL}/loyalty/transactions`, {
+export interface PaginatedTransactions { data: LoyaltyTransaction[]; total: number; }
+
+export async function fetchLoyaltyTransactions(token: string, page = 1, limit = 20): Promise<PaginatedTransactions> {
+  const res = await fetch(`${BASE_URL}/loyalty/transactions?page=${page}&limit=${limit}`, {
     headers: baseHeaders(token),
   });
-  const data = await res.json().catch(() => []);
-  if (!res.ok) {
-    console.warn('[loyalty/transactions]', res.status, data);
-    return [];
-  }
-  return data;
+  const json = await res.json().catch(() => ({ data: [], total: 0 }));
+  if (!res.ok) { console.warn('[loyalty/transactions]', res.status, json); return { data: [], total: 0 }; }
+  if (Array.isArray(json)) return { data: json, total: json.length };
+  return { data: json.data ?? [], total: json.total ?? 0 };
 }

@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from 'react';
 import {
   Animated,
   BackHandler,
-  Image,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -15,6 +14,7 @@ import {
 import Text from '../components/Text';
 import { OrderDisplayItem } from '../App';
 import { fetchOrderById } from '../api/orders';
+import { RestaurantInfo } from '../api/restaurant';
 
 const GREEN = '#8DBB00';
 const GREEN_DARK = '#4a6600';
@@ -39,6 +39,7 @@ interface Props {
   authToken?: string | null;
   mode?: 'success' | 'view';
   createdAt?: string;
+  restaurantInfo?: RestaurantInfo | null;
   onGoHome: () => void;
 }
 
@@ -79,7 +80,6 @@ const ICONS_PICKUP: StepIcon[] = [
   { lib: 'mci', name: 'food-outline' },
 ];
 
-const RESTAURANT_ADDRESS = 'Базилик · ул. Абая, 10';
 
 const STATUS_STEP: Record<string, number> = {
   CREATED:     0,
@@ -131,15 +131,13 @@ function AnimatedStatusIcon({ status }: { status: string }) {
 }
 
 
-export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount, deliveryFee, deliveryType, payment, address, orderId, initialStatus, iikoNumber, orderItems, authToken, mode = 'success', createdAt, onGoHome }: Props) {
+export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount, deliveryFee, deliveryType, payment, address, orderId, initialStatus, iikoNumber, orderItems, authToken, mode = 'success', createdAt, restaurantInfo, onGoHome }: Props) {
   const isViewMode = mode === 'view';
   const scaleAnim = useRef(new Animated.Value(isViewMode ? 1 : 0)).current;
   const fadeAnim  = useRef(new Animated.Value(isViewMode ? 1 : 0)).current;
   const timeBlinkAnim = useRef(new Animated.Value(1)).current;
-  const isCardPayment = payment === 'kaspi';
-  const safeStatus = (s: string) => (s === 'CREATED' && isCardPayment) ? 'IN_PROGRESS' : s;
-  const [currentStatus, setCurrentStatus] = useState(safeStatus(initialStatus || 'CREATED'));
-  console.log('[OrderSuccess] mode:', mode, '| payment:', payment, '| initialStatus:', initialStatus, '| currentStatus(init):', safeStatus(initialStatus || 'CREATED'));
+  const [currentStatus, setCurrentStatus] = useState(initialStatus || 'CREATED');
+  console.log('[OrderSuccess] mode:', mode, '| payment:', payment, '| initialStatus:', initialStatus, '| currentStatus(init):', initialStatus || 'CREATED');
   const [currentIikoNumber, setCurrentIikoNumber] = useState<number | null>(iikoNumber ?? null);
 
   useEffect(() => {
@@ -151,7 +149,10 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
 
   const ACTIVE_STATUSES = new Set(['CREATED', 'IN_PROGRESS', 'READY', 'ON_WAY']);
   useEffect(() => {
-    if (!ACTIVE_STATUSES.has(currentStatus)) return;
+    if (!ACTIVE_STATUSES.has(currentStatus)) {
+      timeBlinkAnim.setValue(1);
+      return;
+    }
     const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(timeBlinkAnim, { toValue: 0, duration: 600, useNativeDriver: true }),
@@ -172,8 +173,8 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
     if (!orderId || !authToken) return;
     fetchOrderById(orderId, authToken)
       .then(o => {
-        console.log('[fetchOrder] raw status:', o.status, '| paymentType:', o.paymentType, '| safeStatus:', safeStatus(o.status));
-        if (o.status) setCurrentStatus(safeStatus(o.status));
+        console.log('[fetchOrder] raw status:', o.status, '| paymentType:', o.paymentType);
+        if (o.status) setCurrentStatus(o.status);
         if (o.iikoNumber != null) setCurrentIikoNumber(o.iikoNumber);
       })
       .catch((e) => { console.log('[fetchOrder] error:', e.message); });
@@ -190,10 +191,10 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
       if (payload.orderId === orderId) {
         fetchOrderById(orderId, authToken)
           .then(o => {
-            if (o.status) setCurrentStatus(safeStatus(o.status));
+            if (o.status) setCurrentStatus(o.status);
             if (o.iikoNumber != null) setCurrentIikoNumber(o.iikoNumber);
           })
-          .catch(() => { setCurrentStatus(safeStatus(payload.status)); });
+          .catch(() => { setCurrentStatus(payload.status); });
       }
     });
     return () => { socket.disconnect(); };
@@ -207,7 +208,7 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
     const interval = setInterval(() => {
       fetchOrderById(orderId, authToken)
         .then(o => {
-          if (o.status) setCurrentStatus(safeStatus(o.status));
+          if (o.status) setCurrentStatus(o.status);
           if (o.iikoNumber != null) setCurrentIikoNumber(o.iikoNumber);
         })
         .catch(() => {});
@@ -222,7 +223,7 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
     const timer = setTimeout(() => {
       fetchOrderById(orderId, authToken)
         .then(o => {
-          if (o.status) setCurrentStatus(safeStatus(o.status));
+          if (o.status) setCurrentStatus(o.status);
           if (o.iikoNumber != null) setCurrentIikoNumber(o.iikoNumber);
         })
         .catch(() => {});
@@ -230,6 +231,8 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
     return () => clearTimeout(timer);
   }, [orderId, authToken, currentIikoNumber, currentStatus]);
 
+  const deductions = (bonusesSpent ?? 0) + (promoDiscount ?? 0);
+  const netTotal = Math.max(0, total - deductions);
   const isDelivery = deliveryType === 'delivery';
   const steps = isDelivery ? STEPS_DELIVERY : STEPS_PICKUP;
   const icons = isDelivery ? ICONS_DELIVERY : ICONS_PICKUP;
@@ -239,13 +242,15 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
     ? 2
     : (STATUS_STEP[currentStatus] ?? 0);
 
-  const currentTitle = (!isDelivery && currentStatus === 'READY')
-    ? 'Заказ готов'
-    : (STATUS_TITLE[currentStatus] ?? 'Ваш заказ');
+  const currentTitle =
+    (!isDelivery && currentStatus === 'READY')      ? 'Заказ готов' :
+    (!isDelivery && currentStatus === 'DELIVERED')  ? 'Заказ выдан' :
+    (STATUS_TITLE[currentStatus] ?? 'Ваш заказ');
 
-  const currentDesc = (!isDelivery && currentStatus === 'READY')
-    ? 'Ваш заказ готов — приходите забирать!'
-    : (STATUS_DESC[currentStatus] ?? '');
+  const currentDesc =
+    (!isDelivery && currentStatus === 'READY')      ? 'Ваш заказ готов — приходите забирать!' :
+    (!isDelivery && currentStatus === 'DELIVERED')  ? 'Спасибо за визит — приятного аппетита!' :
+    (STATUS_DESC[currentStatus] ?? '');
 
   const isCancelled = currentStatus === 'CANCELLED';
 
@@ -330,7 +335,9 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
             <View style={{ flex: 1, marginLeft: 10 }}>
               <Text style={styles.cardLabel}>{isDelivery ? 'АДРЕС' : 'РЕСТОРАН'}</Text>
               <Text style={styles.infoVal}>
-                {isDelivery ? (address || 'Адрес не указан') : RESTAURANT_ADDRESS}
+                {isDelivery
+                  ? (address || 'Адрес не указан')
+                  : [restaurantInfo?.name, restaurantInfo?.address].filter(Boolean).join(' · ') || 'Ресторан'}
               </Text>
             </View>
           </View>
@@ -339,29 +346,25 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
 
           {/* Payment */}
           <View style={styles.infoRow}>
-            {payment === 'kaspi' ? (
-              <Image
-                source={require('../assets/png-klev-club-9nmb-p-kaspi-logotip-png-28.png')}
-                style={styles.kaspiIcon}
-                resizeMode="contain"
-              />
-            ) : (
-              <Ionicons name="cash-outline" size={20} color="rgba(255,255,255,0.4)" />
-            )}
-            <View style={{ flex: 1, marginLeft: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+            <Ionicons
+              name={payment === 'kaspi' ? 'card-outline' : 'cash-outline'}
+              size={20}
+              color="rgba(255,255,255,0.4)"
+            />
+            <View style={{ flex: 1, marginLeft: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
               <View>
                 <Text style={styles.cardLabel}>ОПЛАЧЕНО</Text>
                 <Text style={styles.infoVal}>
-                  {total.toLocaleString('ru-RU')} ₸ · {payment === 'kaspi' ? 'Картой' : 'Наличными'}
+                  {netTotal.toLocaleString('ru-RU')} ₸ · {payment === 'kaspi' ? 'Картой' : 'Наличными'}
                 </Text>
               </View>
               {(!!promoDiscount && promoDiscount > 0 || !!bonusesSpent && bonusesSpent > 0) && (
                 <View style={{ alignItems: 'flex-end' }}>
                   {!!promoDiscount && promoDiscount > 0 && (
-                    <Text style={styles.bonusLine}>Скидка −{promoDiscount.toLocaleString('ru-RU')} ₸</Text>
+                    <Text style={styles.bonusLine}>Скидка · {promoDiscount.toLocaleString('ru-RU')} ₸</Text>
                   )}
                   {!!bonusesSpent && bonusesSpent > 0 && (
-                    <Text style={styles.bonusLine}>Бонусы −{bonusesSpent.toLocaleString('ru-RU')}</Text>
+                    <Text style={styles.bonusLine}>Бонусы · {bonusesSpent.toLocaleString('ru-RU')} ₸</Text>
                   )}
                 </View>
               )}
@@ -395,15 +398,37 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
             {(() => {
               const itemsSum = (orderItems ?? []).reduce((s, i) => s + i.total, 0);
               const grandTotal = itemsSum + (isDelivery && deliveryFee ? deliveryFee : 0);
+              const hasDeductions = deductions > 0;
               return (
-                <View style={[styles.itemRow, { borderBottomWidth: 0, marginTop: 4 }]}>
-                  <View style={{ flex: 1 }}>
-                    <Text style={[styles.itemName, { fontWeight: '800' }]}>Итого:</Text>
+                <>
+                  <View style={{ position: 'relative', overflow: 'hidden' }}>
+                    <View style={[styles.itemRow, { borderBottomWidth: hasDeductions ? 1 : 0, marginTop: 4, opacity: hasDeductions ? 0.4 : 1 }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.itemName, { fontWeight: '800' }]}>Итого:</Text>
+                      </View>
+                      <Text style={[styles.itemPrice, { fontWeight: '800', fontSize: 15 }]}>
+                        {grandTotal.toLocaleString('ru-RU')} ₸
+                      </Text>
+                    </View>
+                    {hasDeductions && (
+                      <View style={{ position: 'absolute', left: 0, right: 0, top: '50%', flexDirection: 'row', overflow: 'hidden', height: 1.5 }}>
+                        {Array.from({ length: 80 }).map((_, i) => (
+                          <View key={i} style={{ width: 10, height: 1.5, backgroundColor: 'rgba(255,255,255,0.3)', marginRight: 5 }} />
+                        ))}
+                      </View>
+                    )}
                   </View>
-                  <Text style={[styles.itemPrice, { fontWeight: '800', fontSize: 15 }]}>
-                    {grandTotal.toLocaleString('ru-RU')} ₸
-                  </Text>
-                </View>
+                  {hasDeductions && (
+                    <View style={[styles.itemRow, { borderBottomWidth: 0, marginTop: 4 }]}>
+                      <View style={{ flex: 1 }}>
+                        <Text style={[styles.itemName, { fontWeight: '800' }]}>Итого с бонусами:</Text>
+                      </View>
+                      <Text style={[styles.itemPrice, { fontWeight: '800', fontSize: 15 }]}>
+                        {netTotal.toLocaleString('ru-RU')} ₸
+                      </Text>
+                    </View>
+                  )}
+                </>
               );
             })()}
           </Animated.View>
@@ -497,7 +522,7 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
   infoVal: { color: '#fff', fontSize: 13, fontWeight: '500' },
   infoValOld: { color: 'rgba(255,255,255,0.35)', fontSize: 12, textDecorationLine: 'line-through', marginBottom: 1 },
-  bonusLine: { color: '#8DBB00', fontSize: 12, fontWeight: '600', marginBottom: 2 },
+  bonusLine: { color: '#8DBB00', fontSize: 13, fontWeight: '500' },
   kaspiIcon: { width: 18, height: 18, marginTop: 1 },
 
   trackerCard: {

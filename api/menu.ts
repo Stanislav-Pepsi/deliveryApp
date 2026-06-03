@@ -1,4 +1,4 @@
-import { DishData, DishModifierGroup, DishSize } from '../App';
+import { DishData, DishModifierGroup, DishSize, DishTag } from '../App';
 import { BASE_URL, baseHeaders } from './config';
 
 interface ApiModifier {
@@ -34,6 +34,7 @@ interface ApiItem {
   image: string | null;
   isAvailable: boolean;
   sizes: ApiSize[];
+  tags?: DishTag[];
 }
 
 interface ApiCategory {
@@ -77,9 +78,11 @@ export async function fetchMenu(token: string): Promise<DishData[]> {
   const data: ApiMenuResponse = await res.json().catch(() => ({ itemCategories: [] }));
 
   const dishes: DishData[] = [];
+  const seenIds = new Set<string>();
   for (const cat of data.itemCategories ?? []) {
     for (const item of cat.items ?? []) {
-      if (item.isAvailable === false) continue;
+      if (seenIds.has(item.id)) continue;
+      seenIds.add(item.id);
       const rawSizes = item.sizes ?? [];
       if (rawSizes.length === 0) continue;
       const def = rawSizes.find(s => s.isDefault) ?? rawSizes[0];
@@ -99,6 +102,12 @@ export async function fetchMenu(token: string): Promise<DishData[]> {
         time: '—',
         sizeId: def.sizeId ?? undefined,
         sizes,
+        tags: (item.tags ?? []).map(t => ({
+          key: t.key,
+          label: t.label,
+          imageUrl: t.imageUrl ?? (t as any).image_url ?? null,
+        })),
+        isAvailable: item.isAvailable !== false,
       });
     }
   }

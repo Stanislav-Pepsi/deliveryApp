@@ -70,9 +70,33 @@ export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
   const currentSize = dish.sizes[selectedSizeIdx] ?? dish.sizes[0];
   const modifierGroups = currentSize?.modifierGroups ?? [];
   const hasModifiers = modifierGroups.some(g => g.modifiers.length > 0);
+  const hasRequired = modifierGroups.some(g => g.minQuantity > 0);
 
-  const toggleModifier = (id: string) =>
-    setSelectedModifiers(prev => ({ ...prev, [id]: !prev[id] }));
+  const toggleModifier = (groupIdx: number, id: string) => {
+    const group = modifierGroups[groupIdx];
+    const isRadio = group.maxQuantity === 1;
+    setSelectedModifiers(prev => {
+      const next = { ...prev };
+      if (isRadio) {
+        // снимаем все в группе, выбираем нажатый (если уже выбран — снимаем только если необязательная)
+        const wasSelected = !!prev[id];
+        group.modifiers.forEach(m => { next[m.id] = false; });
+        if (!wasSelected || group.minQuantity === 0) next[id] = !wasSelected;
+        else next[id] = true; // обязательный radio нельзя деселектить
+      } else {
+        const selectedCount = group.modifiers.filter(m => next[m.id]).length;
+        if (!next[id] && selectedCount >= group.maxQuantity) return prev; // лимит
+        next[id] = !next[id];
+      }
+      return next;
+    });
+  };
+
+  const dishAvailable = dish.isAvailable !== false;
+  const canAddToCart = dishAvailable && modifierGroups.every(group => {
+    const selectedCount = group.modifiers.filter(m => selectedModifiers[m.id]).length;
+    return selectedCount >= group.minQuantity;
+  });
 
   const selectedExtrasList: SelectedExtra[] = modifierGroups
     .flatMap(g => g.modifiers.map(m => ({ ...m, groupId: g.groupId })))
@@ -84,6 +108,7 @@ export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
   const total = unitPrice * qty;
 
   const handleAddToCart = () => {
+    if (!canAddToCart) return;
     onAddToCart({
       dish,
       qty,
@@ -99,7 +124,7 @@ export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       {/* Hero */}
-      <View style={styles.hero}>
+      <View style={[styles.hero, { height: hasMultipleSizes ? H * 0.62 : H * 0.72 }]}>
         {dish.img
           ? <Image source={dish.img} style={styles.heroImg} resizeMode="cover" />
           : <View style={[styles.heroImg, { backgroundColor: '#1a2010' }]} />
@@ -137,40 +162,46 @@ export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
       </View>
 
       {/* Fixed content */}
-      <View style={styles.content}>
-        <Text style={styles.title}>{dish.name}</Text>
-        {!!dish.desc && <Text style={styles.desc}>{dish.desc}</Text>}
+      <View style={styles.contentWrapper}>
+        <View style={styles.content}>
+          <Text style={styles.title}>{dish.name}</Text>
+          {!!dish.desc && <Text style={styles.desc}>{dish.desc}</Text>}
 
-        {hasMultipleSizes && (
-          <>
-            <Text style={styles.sectionLabel}>РАЗМЕР</Text>
-            <View style={styles.sizes}>
-              {dish.sizes.map((s, idx) => (
-                <TouchableOpacity
-                  key={s.sizeId ?? idx}
-                  style={[styles.sizeCard, selectedSizeIdx === idx && styles.sizeCardActive]}
-                  onPress={() => { setSelectedSizeIdx(idx); setSelectedModifiers({}); }}
-                  activeOpacity={0.8}
-                >
-                  <Text style={[styles.sizeSub, selectedSizeIdx === idx && styles.sizeSubActive]}>
-                    {s.sizeName}
-                  </Text>
-                  <Text style={[styles.sizeDelta, selectedSizeIdx === idx && styles.sizeDeltaActive]}>
-                    {Math.round(s.price).toLocaleString('ru-RU')} ₸
-                  </Text>
-                </TouchableOpacity>
-              ))}
+          {hasMultipleSizes && (
+            <>
+              <Text style={styles.sectionLabel}>РАЗМЕР</Text>
+              <View style={styles.sizes}>
+                {dish.sizes.map((s, idx) => (
+                  <TouchableOpacity
+                    key={s.sizeId ?? idx}
+                    style={[styles.sizeCard, selectedSizeIdx === idx && styles.sizeCardActive]}
+                    onPress={() => { setSelectedSizeIdx(idx); setSelectedModifiers({}); }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={[styles.sizeSub, selectedSizeIdx === idx && styles.sizeSubActive]}>
+                      {s.sizeName}
+                    </Text>
+                    <Text style={[styles.sizeDelta, selectedSizeIdx === idx && styles.sizeDeltaActive]}>
+                      {Math.round(s.price).toLocaleString('ru-RU')} ₸
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          )}
+        </View>
+
+        {hasModifiers && (() => {
+          return (
+            <View style={styles.swipeHint}>
+              <Ionicons name="chevron-up" size={13} color={hasRequired ? '#e05252' : 'rgba(255,255,255,0.3)'} />
+              <Text style={[styles.swipeHintTxt, hasRequired && { color: '#e05252' }]}>
+                {hasRequired ? 'Выберите обязательные добавки' : 'Добавить к блюду'}
+              </Text>
+              <Ionicons name="chevron-up" size={13} color={hasRequired ? '#e05252' : 'rgba(255,255,255,0.3)'} />
             </View>
-          </>
-        )}
-
-        {hasModifiers && (
-          <View style={styles.swipeHint}>
-            <Ionicons name="chevron-up" size={13} color="rgba(255,255,255,0.3)" />
-            <Text style={styles.swipeHintTxt}>Добавки</Text>
-            <Ionicons name="chevron-up" size={13} color="rgba(255,255,255,0.3)" />
-          </View>
-        )}
+          );
+        })()}
       </View>
 
       {/* Extras sheet */}
@@ -179,53 +210,78 @@ export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
           <View style={styles.sheetDragArea}>
             <View style={styles.sheetHandle} />
           </View>
-          <Text style={styles.sheetTitle}>Добавить к блюду</Text>
+          <Text style={styles.sheetTitle}>{hasRequired ? 'Выберите обязательные добавки' : 'Добавить к блюду'}</Text>
           <ScrollView showsVerticalScrollIndicator={false}>
-            {modifierGroups.map((group, gi) => (
-              <View key={gi}>
-                {modifierGroups.length > 1 && (
-                  <Text style={styles.groupTitle}>{group.name}</Text>
-                )}
-                {group.modifiers.map(m => {
-                  const checked = !!selectedModifiers[m.id];
-                  return (
-                    <TouchableOpacity
-                      key={m.id}
-                      style={styles.extraRow}
-                      onPress={() => toggleModifier(m.id)}
-                      activeOpacity={0.7}
-                    >
-                      <View style={[styles.checkbox, checked && styles.checkboxActive]}>
-                        {checked && <Ionicons name="checkmark" size={14} color="#fff" />}
+            {modifierGroups.map((group, gi) => {
+              const isRadio = group.maxQuantity === 1;
+              const isRequired = group.minQuantity > 0;
+              const selectedCount = group.modifiers.filter(m => selectedModifiers[m.id]).length;
+              const satisfied = selectedCount >= group.minQuantity;
+              return (
+                <View key={gi} style={gi > 0 ? { marginTop: 8 } : undefined}>
+                  <View style={styles.groupHeader}>
+                    <Text style={[styles.groupTitle, !satisfied && styles.groupTitleRequired]}>
+                      {group.name}
+                    </Text>
+                    {isRequired && (
+                      <View style={[styles.requiredBadge, satisfied && styles.requiredBadgeDone]}>
+                        <Text style={[styles.requiredBadgeTxt, satisfied && styles.requiredBadgeTxtDone]}>{satisfied ? '✓' : 'ОБЯЗАТЕЛЬНО'}</Text>
                       </View>
-                      <Text style={styles.extraLabel}>{m.name}</Text>
-                      <Text style={styles.extraPrice}>
-                        {m.price > 0
-                          ? `+${Math.round(m.price).toLocaleString('ru-RU')} ₸`
-                          : 'Бесплатно'}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            ))}
+                    )}
+                  </View>
+                  {group.modifiers.map(m => {
+                    const checked = !!selectedModifiers[m.id];
+                    return (
+                      <TouchableOpacity
+                        key={m.id}
+                        style={styles.extraRow}
+                        onPress={() => toggleModifier(gi, m.id)}
+                        activeOpacity={0.7}
+                      >
+                        {isRadio ? (
+                          <Ionicons
+                            name={checked ? 'radio-button-on' : 'radio-button-off'}
+                            size={20} color={checked ? GREEN : 'rgba(255,255,255,0.3)'}
+                          />
+                        ) : (
+                          <View style={[styles.checkbox, checked && styles.checkboxActive]}>
+                            {checked && <Ionicons name="checkmark" size={14} color="#fff" />}
+                          </View>
+                        )}
+                        <Text style={styles.extraLabel}>{m.name}</Text>
+                        {m.price > 0 && (
+                          <Text style={styles.extraPrice}>+{Math.round(m.price).toLocaleString('ru-RU')} ₸</Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              );
+            })}
           </ScrollView>
         </Animated.View>
       )}
 
       {/* Bottom bar */}
       <View style={styles.bottomBar}>
-        <View style={styles.qtyBox}>
-          <TouchableOpacity onPress={() => setQty(q => Math.max(1, q - 1))} style={styles.qtyBtn}>
+        <View style={[styles.qtyBox, !dishAvailable && { opacity: 0.3 }]}>
+          <TouchableOpacity onPress={() => setQty(q => Math.max(1, q - 1))} style={styles.qtyBtn} disabled={!dishAvailable}>
             <Text style={styles.qtyBtnTxt}>−</Text>
           </TouchableOpacity>
           <Text style={styles.qtyNum}>{qty}</Text>
-          <TouchableOpacity onPress={() => setQty(q => q + 1)} style={styles.qtyBtn}>
+          <TouchableOpacity onPress={() => setQty(q => q + 1)} style={styles.qtyBtn} disabled={!dishAvailable}>
             <Text style={styles.qtyBtnTxt}>+</Text>
           </TouchableOpacity>
         </View>
-        <TouchableOpacity style={styles.cartBtn} activeOpacity={0.85} onPress={handleAddToCart}>
-          <Text style={styles.cartBtnTxt}>В корзину · {total.toLocaleString('ru-RU')} ₸</Text>
+        <TouchableOpacity
+          style={[styles.cartBtn, !canAddToCart && { opacity: 0.45 }]}
+          activeOpacity={0.85}
+          onPress={handleAddToCart}
+          disabled={!canAddToCart}
+        >
+          <Text style={styles.cartBtnTxt}>
+            {dishAvailable ? `В корзину · ${total.toLocaleString('ru-RU')} ₸` : 'Уже готовим'}
+          </Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -235,7 +291,7 @@ export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: BG },
 
-  hero: { width: W, height: H * 0.62 },
+  hero: { width: W },
   heroImg: { width: '100%', height: '100%' },
   heroGradient: {
     position: 'absolute', bottom: 0, left: 0, right: 0, height: 260,
@@ -247,11 +303,15 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
-  content: {
+  contentWrapper: {
     flex: 1,
+    backgroundColor: BG,
+    justifyContent: 'flex-end',
+    paddingBottom: 16,
+  },
+  content: {
     paddingHorizontal: 24,
     paddingTop: 18,
-    backgroundColor: BG,
   },
 
   title: {
@@ -298,14 +358,11 @@ const styles = StyleSheet.create({
   sizeDeltaActive: { color: 'rgba(255,255,255,0.85)' },
 
   swipeHint: {
-    position: 'absolute',
-    bottom: 16,
-    left: 0, right: 0,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
     gap: 6,
   },
   swipeHintTxt: {
-    color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '500',
+    color: 'rgba(255,255,255,0.5)', fontSize: 12, fontWeight: '500', textAlign: 'center',
   },
 
   extrasSheet: {
@@ -331,12 +388,15 @@ const styles = StyleSheet.create({
     marginTop: 12,
   },
   sheetTitle: {
-    color: '#fff', fontSize: 17, fontWeight: '700', marginBottom: 14,
+    color: '#fff', fontSize: 17, fontWeight: '700', marginBottom: 14, textAlign: 'center',
   },
-  groupTitle: {
-    color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '700',
-    letterSpacing: 0.8, marginTop: 10, marginBottom: 4, textTransform: 'uppercase',
-  },
+  groupHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10, marginBottom: 4 },
+  groupTitle: { color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
+  groupTitleRequired: { color: '#e05252' },
+  requiredBadge:     { backgroundColor: 'rgba(224,82,82,0.15)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
+  requiredBadgeDone: { backgroundColor: 'rgba(141,187,0,0.15)' },
+  requiredBadgeTxt:  { color: '#e05252', fontSize: 11, fontWeight: '700' },
+  requiredBadgeTxtDone: { color: '#8DBB00' },
   extraRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 12,

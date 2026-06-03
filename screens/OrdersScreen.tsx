@@ -1,8 +1,8 @@
 ﻿import { Ionicons } from '@expo/vector-icons';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  ScrollView,
+  FlatList,
   StatusBar,
   StyleSheet,
   TouchableOpacity,
@@ -66,7 +66,7 @@ const MOCK_ORDER: ApiOrder = {
   iikoNumber: 42,
   orderType: 'DELIVERY',
   status: 'DELIVERED',
-  paymentType: 'CARD',
+  paymentType: 'SCARD',
   paymentStatus: 'PAID',
   totalAmount: '4590',
   bonusesSpent: null,
@@ -81,24 +81,46 @@ const MOCK_ORDER: ApiOrder = {
   updatedAt: new Date().toISOString(),
 };
 
+const LIMIT = 20;
+
 export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }: Props) {
-  const [orders, setOrders] = useState<ApiOrder[]>([MOCK_ORDER]);
-  const [loading, setLoading] = useState(true);
+  const [orders, setOrders]       = useState<ApiOrder[]>([MOCK_ORDER]);
+  const [loading, setLoading]     = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore]     = useState(false);
+  const pageRef = useRef(1);
+
+  const loadOrders = async (page: number, append = false) => {
+    if (!authToken) { setLoading(false); return; }
+    try {
+      const res = await fetchOrders(authToken, page, LIMIT);
+      const newOrders = page === 1 ? [MOCK_ORDER, ...res.data] : res.data;
+      setOrders(prev => append ? [...prev, ...res.data] : newOrders);
+      setHasMore(page * LIMIT < res.total);
+      pageRef.current = page;
+    } catch {}
+  };
 
   useEffect(() => {
-    if (!authToken) { setLoading(false); return; }
-    fetchOrders(authToken)
-      .then(data => setOrders([MOCK_ORDER, ...data]))
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    loadOrders(1).finally(() => setLoading(false));
   }, [authToken]);
 
-  // Polling каждые 15 секунд
+  const loadMore = async () => {
+    if (loadingMore || !hasMore) return;
+    setLoadingMore(true);
+    await loadOrders(pageRef.current + 1, true);
+    setLoadingMore(false);
+  };
+
+  // Polling — обновляем первую страницу каждые 15 секунд
   useEffect(() => {
     if (!authToken) return;
     const interval = setInterval(() => {
-      fetchOrders(authToken)
-        .then(data => setOrders([MOCK_ORDER, ...data]))
+      fetchOrders(authToken, 1, LIMIT)
+        .then(res => setOrders(prev => {
+          const fresh = [MOCK_ORDER, ...res.data];
+          return pageRef.current > 1 ? [...fresh, ...prev.slice(fresh.length)] : fresh;
+        }))
         .catch(() => {});
     }, 15000);
     return () => clearInterval(interval);
@@ -121,9 +143,7 @@ export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }
   const past    = orders.filter(o => !ACTIVE_STATUSES.has(o.status));
 
   const renderOrder = (o: ApiOrder) => {
-    const isCardPayment = o.paymentType === 'CARD' || o.paymentType === 'KASPI';
-    const displayStatus = (o.status === 'CREATED' && isCardPayment) ? 'IN_PROGRESS' : o.status;
-    const active = ACTIVE_STATUSES.has(displayStatus);
+    const active = ACTIVE_STATUSES.has(o.status);
     const total = parseFloat(o.totalAmount) || 0;
     let addressText = '';
     if (o.deliveryAddress) {
@@ -137,13 +157,13 @@ export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }
     const summary: OrderSummary = {
       id: o.id,
       iikoNumber: o.iikoNumber,
-      status: displayStatus,
+      status: o.status,
       total,
       bonusesSpent: o.bonusesSpent ? parseFloat(o.bonusesSpent) : null,
       deliveryFee: o.deliveryFee ? parseFloat(o.deliveryFee) : null,
       promoDiscount: o.promoDiscount ? parseFloat(o.promoDiscount) : null,
       deliveryType: o.orderType === 'DELIVERY' ? 'delivery' : 'pickup',
-      payment: o.paymentType === 'KASPI' ? 'kaspi' : o.paymentType === 'CASH' ? 'cash' : 'kaspi',
+      payment: o.paymentType === 'SCASH' ? 'cash' : 'kaspi',
       address: addressText,
       createdAt: o.createdAt,
       orderItems: (o.items ?? []).map(i => ({
@@ -166,9 +186,9 @@ export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }
             <Text style={styles.orderNum}>{orderNum}</Text>
             <View style={[styles.badge, active ? styles.badgeActive : styles.badgeDone]}>
               <Text style={[styles.badgeTxt, active ? styles.badgeActiveTxt : styles.badgeDoneTxt]}>
-                {displayStatus === 'READY' && o.orderType === 'PICKUP'
+                {o.status === 'READY' && o.orderType === 'PICKUP'
                   ? 'Готов'
-                  : (STATUS_LABELS[displayStatus] ?? displayStatus)}
+                  : (STATUS_LABELS[o.status] ?? o.status)}
               </Text>
             </View>
           </View>
@@ -201,32 +221,37 @@ export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {loading ? (
-          <ActivityIndicator color={GREEN} style={{ marginTop: 60 }} />
-        ) : orders.length === 0 ? (
-          <View style={styles.empty}>
-            <Ionicons name="receipt-outline" size={48} color="rgba(255,255,255,0.15)" />
-            <Text style={styles.emptyTxt}>Нет заказов</Text>
-          </View>
-        ) : (
-          <>
-            {current.length > 0 && (
-              <>
-                <Text style={styles.sectionLabel}>АКТИВНЫЕ</Text>
-                {current.map(renderOrder)}
-              </>
-            )}
-            {past.length > 0 && (
-              <>
-                <Text style={[styles.sectionLabel, { marginTop: 24 }]}>ИСТОРИЯ</Text>
-                {past.map(renderOrder)}
-              </>
-            )}
-          </>
-        )}
-        <View style={{ height: 40 }} />
-      </ScrollView>
+      {loading ? (
+        <ActivityIndicator color={GREEN} style={{ marginTop: 60 }} />
+      ) : orders.length === 0 ? (
+        <View style={styles.empty}>
+          <Ionicons name="receipt-outline" size={48} color="rgba(255,255,255,0.15)" />
+          <Text style={styles.emptyTxt}>Нет заказов</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={[
+            ...(current.length > 0 ? [{ type: 'header' as const, title: 'АКТИВНЫЕ' }, ...current.map(o => ({ type: 'order' as const, order: o }))] : []),
+            ...(past.length > 0 ? [{ type: 'header' as const, title: 'ИСТОРИЯ' }, ...past.map(o => ({ type: 'order' as const, order: o }))] : []),
+          ]}
+          keyExtractor={(item, i) => item.type === 'header' ? `h-${i}` : item.order.id}
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+          onEndReached={loadMore}
+          onEndReachedThreshold={0.3}
+          renderItem={({ item, index }) => {
+            if (item.type === 'header') {
+              return <Text style={[styles.sectionLabel, index > 0 && { marginTop: 24 }]}>{item.title}</Text>;
+            }
+            return <>{renderOrder(item.order)}</>;
+          }}
+          ListFooterComponent={
+            loadingMore
+              ? <ActivityIndicator color={GREEN} style={{ marginVertical: 16 }} />
+              : <View style={{ height: 40 }} />
+          }
+        />
+      )}
     </View>
   );
 }

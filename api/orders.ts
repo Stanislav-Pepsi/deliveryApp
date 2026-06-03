@@ -1,12 +1,20 @@
 import { CartItem } from '../App';
 import { BASE_URL, baseHeaders } from './config';
 
+export class UnavailableItemsError extends Error {
+  productIds: string[];
+  constructor(message: string, productIds: string[]) {
+    super(message);
+    this.productIds = productIds;
+  }
+}
+
 export interface ApiOrder {
   id: string;
   iikoNumber: number | null;
   orderType: 'DELIVERY' | 'PICKUP';
   status: string;
-  paymentType: 'CARD' | 'KASPI' | 'CASH';
+  paymentType: 'SCARD' | 'SCASH';
   paymentStatus: 'UNPAID' | 'PAID' | 'REFUNDED';
   totalAmount: string;
   deliveryFee: string | null;
@@ -35,8 +43,9 @@ export async function createOrder(
   phone: string,
   bonusesToSpend?: number,
   promoCode?: string,
+  completeBefore?: string,
 ): Promise<{ orderId: string; deliveryFee: number | null; promoDiscount: number | null }> {
-  const paymentType = payment === 'kaspi' ? 'CARD' : 'CASH';
+  const paymentType = payment === 'kaspi' ? 'SCARD' : 'SCASH';
   const totalAmount = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
 
   const body: Record<string, unknown> = {
@@ -63,6 +72,7 @@ export async function createOrder(
   if (comment) body.comment = comment;
   if (bonusesToSpend && bonusesToSpend > 0) body.bonusesToSpend = bonusesToSpend;
   if (promoCode) body.promoCode = promoCode;
+  if (completeBefore) body.completeBefore = completeBefore;
 
   const res = await fetch(`${BASE_URL}/orders`, {
     method: 'POST',
@@ -70,7 +80,14 @@ export async function createOrder(
     body: JSON.stringify(body),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || 'Ошибка оформления заказа');
+  if (!res.ok) {
+    const message: string = data.message || 'Ошибка оформления заказа';
+    if (message.startsWith('Items are currently unavailable:')) {
+      const ids = message.replace('Items are currently unavailable:', '').trim().split(',').map((s: string) => s.trim()).filter(Boolean);
+      throw new UnavailableItemsError(message, ids);
+    }
+    throw new Error(message);
+  }
   return data;
 }
 
@@ -82,10 +99,14 @@ export async function fetchOrderById(orderId: string, token: string): Promise<Ap
   return res.json();
 }
 
-export async function fetchOrders(token: string): Promise<ApiOrder[]> {
-  const res = await fetch(`${BASE_URL}/orders`, {
+export interface PaginatedOrders { data: ApiOrder[]; total: number; page: number; limit: number; }
+
+export async function fetchOrders(token: string, page = 1, limit = 20): Promise<PaginatedOrders> {
+  const res = await fetch(`${BASE_URL}/orders?page=${page}&limit=${limit}`, {
     headers: baseHeaders(token),
   });
   if (!res.ok) throw new Error('Ошибка загрузки заказов');
-  return res.json().catch(() => []);
+  const json = await res.json().catch(() => ({ data: [], total: 0, page, limit }));
+  if (Array.isArray(json)) return { data: json, total: json.length, page, limit };
+  return { data: json.data ?? [], total: json.total ?? 0, page: json.page ?? page, limit: json.limit ?? limit };
 }

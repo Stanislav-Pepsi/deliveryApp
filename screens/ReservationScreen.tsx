@@ -51,17 +51,20 @@ function buildGrid(year: number, month: number) {
 }
 
 const TYPES = [
-  { key: 'table',  icon: 'restaurant-outline' as const, label: 'Стол',   sub: 'без предоплаты' },
-  { key: 'banket', icon: 'wine-outline'        as const, label: 'Банкет', sub: 'с меню от шефа' },
+  { key: 'table',  icon: 'restaurant-outline' as const, label: 'Стол',   sub: 'забронировать место' },
+  { key: 'banquet', icon: 'wine-outline'        as const, label: 'Банкет', sub: 'с меню от шефа' },
 ];
 
 interface Props {
   onBack: () => void;
   onNext: (date: string, time: string, guests: number, bookType: 'table' | 'banquet') => void;
   restaurantInfo?: RestaurantInfo | null;
+  initialDate?: string;
+  initialTime?: string;
+  initialBookType?: 'table' | 'banquet';
 }
 
-export default function ReservationScreen({ onBack, onNext, restaurantInfo }: Props) {
+export default function ReservationScreen({ onBack, onNext, restaurantInfo, initialDate, initialTime, initialBookType }: Props) {
   const now = new Date();
   const todayHours = getHoursForDay(restaurantInfo?.workingHours, now);
   const openHour   = todayHours ? Math.floor(todayHours.openMin / 60)  : 6;
@@ -70,22 +73,30 @@ export default function ReservationScreen({ onBack, onNext, restaurantInfo }: Pr
   const HOURS_INF  = Array.from({ length: HOURS.length * COPIES }, (_, i) => HOURS[i % HOURS.length]);
   const MID_H      = HOURS.length;
 
-  const [bookType, setBookType] = useState('table');
+  const [bookType, setBookType] = useState(initialBookType ?? 'table');
   const [guests, setGuests]     = useState(2);
 
   // Calendar
+  const initDate = (() => {
+    if (!initialDate) return null;
+    const p = initialDate.split('.');
+    if (p.length !== 3) return null;
+    return { d: Number(p[0]), m: Number(p[1]) - 1, y: Number(p[2]) };
+  })();
   const [calOpen, setCalOpen]   = useState(false);
-  const [calYear, setCalYear]   = useState(now.getFullYear());
-  const [calMonth, setCalMonth] = useState(now.getMonth());
-  const [selDate, setSelDate]   = useState<{ d: number; m: number; y: number } | null>(null);
+  const [calYear, setCalYear]   = useState(initDate?.y ?? now.getFullYear());
+  const [calMonth, setCalMonth] = useState(initDate?.m ?? now.getMonth());
+  const [selDate, setSelDate]   = useState<{ d: number; m: number; y: number } | null>(initDate);
 
   // Time wheel
   const [timeOpen, setTimeOpen] = useState(false);
   const defaultHour = Math.min(Math.max(12, openHour), closeHour);
-  const [selHour, setSelHour]   = useState(defaultHour);
-  const [selMin, setSelMin]     = useState(0);
-  const [pendH, setPendH]       = useState(defaultHour);
-  const [pendM, setPendM]       = useState(0);
+  const initHour = initialTime ? parseInt(initialTime.split(':')[0], 10) : defaultHour;
+  const initMin  = initialTime ? parseInt(initialTime.split(':')[1], 10) : 0;
+  const [selHour, setSelHour]   = useState(initHour);
+  const [selMin, setSelMin]     = useState(initMin);
+  const [pendH, setPendH]       = useState(initHour);
+  const [pendM, setPendM]       = useState(initMin);
   const hourRef = useRef<ScrollView>(null);
   const minRef  = useRef<ScrollView>(null);
 

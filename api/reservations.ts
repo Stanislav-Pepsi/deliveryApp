@@ -63,6 +63,16 @@ export interface ReservationTable {
   sectionName?: string | null;
 }
 
+export interface ReservationResponseItem {
+  productId: string;
+  name?: string;
+  amount: number;
+  price: number;
+  sizeId?: string | null;
+  comment?: string | null;
+  modifiers?: { productId: string; amount: number; price: number; productGroupId?: string }[];
+}
+
 export interface UserReservation {
   id: string;
   status: string;
@@ -78,11 +88,23 @@ export interface UserReservation {
   place?: string;
   comment?: string;
   tables?: ReservationTable[];
+  items?: ReservationResponseItem[] | null;
+}
+
+export interface BanquetOrderModifier {
+  productId: string;
+  amount: number;
+  price?: number;
+  productGroupId: string | null;
 }
 
 export interface BanquetOrderItem {
   productId: string;
-  quantity: number;
+  amount: number;
+  price: number;
+  sizeId?: string;
+  comment?: string;
+  modifiers?: BanquetOrderModifier[];
 }
 
 export interface CreateReservationParams {
@@ -122,7 +144,8 @@ export async function createReservation(
     err.status = res.status;
     throw err;
   }
-  return data;
+  const id = data.id ?? data.reservationId ?? data.data?.id;
+  return { ...data, id };
 }
 
 export async function cancelReservation(

@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { addAddress, addressDisplay, deleteAddress, fetchAddresses } from './api/addresses';
 
@@ -202,9 +203,14 @@ export default function App() {
     });
   };
 
+  const extrasKey = (extras: SelectedExtra[]) => extras.map(e => e.id).sort().join(',');
   const addToBanquet = (item: CartItem) => {
     setBanquetItems(prev => {
-      const idx = prev.findIndex(i => i.dish.id === item.dish.id && i.size === item.size);
+      const idx = prev.findIndex(i =>
+        i.dish.id === item.dish.id &&
+        i.size === item.size &&
+        extrasKey(i.extras) === extrasKey(item.extras)
+      );
       if (idx >= 0) {
         const updated = [...prev];
         updated[idx] = { ...updated[idx], qty: updated[idx].qty + item.qty };
@@ -224,15 +230,6 @@ export default function App() {
 
   if (!fontsLoaded) return null;
 
-  if (screen === 'dish' && selectedDish) {
-    return (
-      <DishDetailScreen
-        dish={selectedDish}
-        onBack={() => setScreen('home')}
-        onAddToCart={(item) => { addToCart(item); setScreen('home'); }}
-      />
-    );
-  }
   if (screen === 'banquetDish' && banquetDish) {
     return (
       <DishDetailScreen
@@ -245,7 +242,17 @@ export default function App() {
   if (screen === 'banquetMenu') {
     return (
       <BanquetMenuScreen
+        dishes={dishes}
+        authToken={authToken}
         items={banquetItems}
+        serviceChargePercent={restaurantInfo?.serviceChargePercent ?? 0}
+        onUpdateQty={(index, qty) => {
+          setBanquetItems(prev =>
+            qty <= 0
+              ? prev.filter((_, i) => i !== index)
+              : prev.map((item, i) => i === index ? { ...item, qty } : item)
+          );
+        }}
         onBack={() => setScreen('tableSelection')}
         onDishPress={(dish) => { setBanquetDish(dish); setScreen('banquetDish'); }}
         onDone={() => setScreen('tableSelection')}
@@ -357,6 +364,9 @@ export default function App() {
           setScreen('tableSelection');
         }}
         restaurantInfo={restaurantInfo}
+        initialDate={resDetails?.date}
+        initialTime={resDetails?.time}
+        initialBookType={resDetails?.bookType}
       />
     );
   }
@@ -367,11 +377,25 @@ export default function App() {
         time={resDetails.time}
         guests={resDetails.guests}
         bookType={resDetails.bookType}
-        banquetItems={banquetItems.map(i => ({ productId: i.dish.id, quantity: i.qty }))}
+        banquetItems={banquetItems.map(i => ({
+          productId: i.dish.id,
+          amount: i.qty,
+          price: i.unitPrice,
+          sizeId: i.size || undefined,
+          modifiers: i.extras.length > 0 ? i.extras.map(e => ({
+            productId: e.id,
+            amount: 1,
+            price: e.price > 0 ? e.price : undefined,
+            productGroupId: e.groupId,
+          })) : undefined,
+        }))}
+        banquetTotal={banquetItems.reduce((s, i) => s + i.unitPrice * i.qty, 0)}
+        serviceChargePercent={restaurantInfo?.serviceChargePercent ?? 0}
         phone={userPhone}
         tableId={banquetTableId}
         onTableChange={setBanquetTableId}
         onBack={() => setScreen('reservation')}
+        onBanquetMenu={() => setScreen('banquetMenu')}
         onConfirm={({ reservationId, tableName, tableNumber, sectionName, guests, comment }) => {
           setReservationResult({
             reservationId,
@@ -383,6 +407,13 @@ export default function App() {
             guests,
             bookType: resDetails!.bookType,
             comment,
+            banquetItems: resDetails!.bookType === 'banquet' ? banquetItems.map(i => ({
+              name: i.dish.name,
+              sizeName: i.sizeName,
+              extras: i.extras.map(e => e.name),
+              unitPrice: i.unitPrice,
+              qty: i.qty,
+            })) : undefined,
           });
           setBanquetItems([]);
           setBanquetTableId(null);
@@ -510,23 +541,34 @@ export default function App() {
       />
     );
   }
-  if (screen === 'home') {
+  if (screen === 'home' || screen === 'dish') {
     return (
-      <HomeScreen
-        cartCount={cart.reduce((s, i) => s + i.qty, 0)}
-        onDishPress={(dish) => { setSelectedDish(dish); setScreen('dish'); }}
-        onCartPress={() => setScreen('cart')}
-        onReservationPress={() => setScreen('reservation')}
-        onProfilePress={() => { if (authToken) refreshBalance(authToken); setScreen('profile'); }}
-        onOrderPress={(order) => { setSelectedOrder(order); setScreen('viewOrder'); }}
-        onAddressPress={() => { setAddrReturn('home'); setScreen('addressBook'); }}
-        address={activeAddress}
-        authToken={authToken}
-        onDishesLoaded={setDishes}
-        restaurantInfo={restaurantInfo}
-        favorites={favorites}
-        onToggleFavorite={toggleFavorite}
-      />
+      <View style={{ flex: 1 }}>
+        <HomeScreen
+          cartCount={cart.reduce((s, i) => s + i.qty, 0)}
+          onDishPress={(dish) => { setSelectedDish(dish); setScreen('dish'); }}
+          onCartPress={() => setScreen('cart')}
+          onReservationPress={() => setScreen('reservation')}
+          onProfilePress={() => { if (authToken) refreshBalance(authToken); setScreen('profile'); }}
+          onOrderPress={(order) => { setSelectedOrder(order); setScreen('viewOrder'); }}
+          onAddressPress={() => { setAddrReturn('home'); setScreen('addressBook'); }}
+          address={activeAddress}
+          authToken={authToken}
+          onDishesLoaded={setDishes}
+          restaurantInfo={restaurantInfo}
+          favorites={favorites}
+          onToggleFavorite={toggleFavorite}
+        />
+        {screen === 'dish' && selectedDish && (
+          <View style={StyleSheet.absoluteFill}>
+            <DishDetailScreen
+              dish={selectedDish}
+              onBack={() => setScreen('home')}
+              onAddToCart={(item) => { addToCart(item); setScreen('home'); }}
+            />
+          </View>
+        )}
+      </View>
     );
   }
   return <LoginScreen onSuccess={(name, token, phone) => {

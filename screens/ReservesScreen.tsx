@@ -18,12 +18,20 @@ const CARD       = 'rgba(255,255,255,0.06)';
 const BORDER     = 'rgba(255,255,255,0.1)';
 
 const STATUS_MAP: Record<string, { label: string; active: boolean }> = {
-  CREATED:    { label: 'Создано',      active: true },
-  CONFIRMED:  { label: 'Подтверждено', active: true },
-  PENDING:    { label: 'Ожидает',      active: true },
-  CANCELLED:  { label: 'Отменено',     active: false },
-  COMPLETED:  { label: 'Завершено',    active: false },
+  CREATED:    { label: 'Создан',        active: true },
+  CONFIRMED:  { label: 'Визит состоялся', active: false },
+  PENDING:    { label: 'Ожидается',    active: true },
+  CANCELLED:  { label: 'Отменён',      active: false },
+  COMPLETED:  { label: 'Завершён',     active: false },
 };
+
+export interface MappedBanquetItem {
+  name?: string;
+  amount: number;
+  price: number;
+  comment?: string;
+  modifiers?: { amount: number; price: number }[];
+}
 
 export interface MappedReserve {
   id: string;
@@ -35,6 +43,9 @@ export interface MappedReserve {
   guests: number;
   status: string;
   active: boolean;
+  isCancelled: boolean;
+  bookType: 'table' | 'banquet';
+  banquetItems?: MappedBanquetItem[];
   comment?: string;
 }
 
@@ -63,10 +74,20 @@ function mapReservation(r: UserReservation): MappedReserve {
     : undefined;
   const guestsVal = r.guestsCount ?? r.guests ?? 0;
   const { label, active } = STATUS_MAP[r.status] ?? { label: r.status, active: false };
+  const isCancelled = r.status === 'CANCELLED';
+  const bookType = r.type === 'BANQUET' ? 'banquet' : 'table';
+  const banquetItems = r.items?.map(i => ({
+    name: i.name ?? undefined,
+    amount: i.amount,
+    price: i.price,
+    comment: i.comment ?? undefined,
+    modifiers: i.modifiers?.map(m => ({ amount: m.amount, price: m.price })),
+  }));
   return {
     id: r.id, place, sectionName: rawSection ?? undefined,
     date, time, createdAt,
-    guests: guestsVal, status: label, active,
+    guests: guestsVal, status: label, active, isCancelled, bookType,
+    banquetItems: banquetItems?.length ? banquetItems : undefined,
     comment: r.comment,
   };
 }
@@ -122,13 +143,15 @@ export default function ReservesScreen({ onBack, authToken, onReservationPress }
         <View style={styles.iconBox}>
           <Ionicons name="restaurant-outline" size={18} color={r.active ? GREEN : 'rgba(255,255,255,0.3)'} />
         </View>
+        <Text style={[styles.bookTypeLabel, !r.active && { color: 'rgba(255,255,255,0.25)' }]}>
+          {r.bookType === 'banquet' ? 'Банкет' : 'Столик'}
+        </Text>
         <View style={[styles.badge, r.active ? styles.badgeActive : styles.badgeDone]}>
           <Text style={[styles.badgeTxt, r.active ? styles.badgeActiveTxt : styles.badgeDoneTxt]}>
             {r.status}
           </Text>
         </View>
       </View>
-
       <Text style={[styles.place, !r.active && styles.textDim]}>
         {[r.sectionName, r.place && /^\d+$/.test(r.place) ? `Номер стола: ${r.place}` : null].filter(Boolean).join(' · ')}
       </Text>
@@ -236,6 +259,7 @@ const styles = StyleSheet.create({
     alignItems: 'center', justifyContent: 'center',
   },
 
+  bookTypeLabel: { flex: 1, color: '#fff', fontSize: 16, fontWeight: '800', marginLeft: 10 },
   place: { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: 10 },
 
   detailsRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },

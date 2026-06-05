@@ -6,6 +6,7 @@ import { io } from 'socket.io-client';
 const WS_URL = 'https://api.starten.kz';
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   BackHandler,
   Modal,
@@ -34,6 +35,7 @@ export interface ReservationResult {
   guests: number;
   bookType: 'table' | 'banquet';
   comment?: string;
+  banquetItems?: { name: string; sizeName: string; extras: string[]; unitPrice: number; qty: number }[];
 }
 
 interface Props {
@@ -55,14 +57,17 @@ export default function ReservationSuccessScreen({ result, authToken, restaurant
   const [reservationStatus, setReservationStatus] = useState('CREATED');
 
   const confirmCancel = async () => {
-    if (!authToken) return;
+    if (!authToken || !result.reservationId) {
+      Alert.alert('Ошибка', 'Не удалось определить ID бронирования');
+      return;
+    }
     setCancelling(true);
     setShowConfirm(false);
     try {
       await cancelReservation(result.reservationId, 'ClientRefused', authToken);
       onGoHome();
-    } catch {
-      // silent
+    } catch (e: any) {
+      Alert.alert('Ошибка', e.message || 'Не удалось отменить бронирование');
     } finally {
       setCancelling(false);
     }
@@ -109,7 +114,7 @@ export default function ReservationSuccessScreen({ result, authToken, restaurant
     return () => { socket.disconnect(); };
   }, [authToken, result.reservationId]);
 
-  const isBanquet = bookType === 'banquet';
+  const isBanquet = bookType === 'banquet' && (result.banquetItems?.length ?? 0) > 0;
   const guestWord = guests === 1 ? 'гость' : guests < 5 ? 'гостя' : 'гостей';
 
   return (
@@ -128,9 +133,11 @@ export default function ReservationSuccessScreen({ result, authToken, restaurant
 
         <Animated.View style={{ opacity: fadeAnim, alignItems: 'center' }}>
           <Text style={styles.title}>
-            {isBanquet ? 'Отлично, мы вас ждем!' : 'Отлично, мы вас ждем!'}
+            {reservationStatus === 'CONFIRMED' ? 'Визит состоялся' : isBanquet ? 'Скоро свяжемся с вами!' : 'Отлично, мы вас ждем!'}
           </Text>
-          <Text style={styles.subtitle}>До встречи в выбранный день :)</Text>
+          <Text style={styles.subtitle}>
+            {reservationStatus === 'CONFIRMED' ? 'Спасибо за визит!' : isBanquet ? 'Ваша заявка на банкет принята' : 'До встречи в выбранный день :)'}
+          </Text>
         </Animated.View>
 
         <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
@@ -154,7 +161,7 @@ export default function ReservationSuccessScreen({ result, authToken, restaurant
           <View style={styles.infoRow}>
             <Ionicons name="grid-outline" size={16} color="rgba(255,255,255,0.4)" />
             <View style={{ marginLeft: 10, flex: 1 }}>
-              <Text style={styles.cardLabel}>МЕСТО РЕЗЕРВА</Text>
+              <Text style={styles.cardLabel}>{isBanquet ? 'МЕСТО БАНКЕТА' : 'МЕСТО РЕЗЕРВА'}</Text>
               <Text style={styles.infoVal}>{placeReserv || '—'}</Text>
             </View>
           </View>
@@ -162,7 +169,7 @@ export default function ReservationSuccessScreen({ result, authToken, restaurant
           <View style={styles.infoRow}>
             <Ionicons name="calendar-outline" size={16} color="rgba(255,255,255,0.4)" />
             <View style={{ marginLeft: 10 }}>
-              <Text style={styles.cardLabel}>ДАТА РЕЗЕРВА</Text>
+              <Text style={styles.cardLabel}>{isBanquet ? 'ДАТА БАНКЕТА' : 'ДАТА РЕЗЕРВА'}</Text>
               <Text style={styles.infoVal}>{date} · {time}</Text>
             </View>
           </View>
@@ -184,6 +191,55 @@ export default function ReservationSuccessScreen({ result, authToken, restaurant
           </View>
 
         </Animated.View>
+
+        {result.banquetItems && result.banquetItems.length > 0 && (
+          <Animated.View style={[styles.card, { opacity: fadeAnim }]}>
+            <View style={styles.infoRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.cardLabel}>БАНКЕТНОЕ МЕНЮ</Text>
+                {result.banquetItems.map((item, i) => (
+                  <View key={i} style={styles.banquetRow}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.banquetName}>{item.name}</Text>
+                      {(item.sizeName || item.extras.length > 0) && (
+                        <Text style={styles.banquetSub}>
+                          {[item.sizeName, ...item.extras].filter(Boolean).join(' · ')}
+                        </Text>
+                      )}
+                    </View>
+                    <Text style={styles.banquetQty}>×{item.qty}</Text>
+                    <Text style={styles.banquetPrice}>{(item.unitPrice * item.qty).toLocaleString('ru-RU')} ₸</Text>
+                  </View>
+                ))}
+                {(() => {
+                  const scp = restaurantInfo?.serviceChargePercent ?? 0;
+                  const itemsTotal = result.banquetItems!.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+                  const charge = scp > 0 ? Math.round(itemsTotal * scp / 100) : 0;
+                  return (
+                    <>
+                      {charge > 0 && (
+                        <View style={styles.banquetChargeRow}>
+                          <Text style={styles.banquetTotalLabel}>Сумма заказа</Text>
+                          <Text style={styles.banquetPrice}>{itemsTotal.toLocaleString('ru-RU')} ₸</Text>
+                        </View>
+                      )}
+                      {charge > 0 && (
+                        <View style={styles.banquetChargeRow}>
+                          <Text style={styles.banquetTotalLabel}>Обслуживание ({scp}%)</Text>
+                          <Text style={styles.banquetPrice}>{charge.toLocaleString('ru-RU')} ₸</Text>
+                        </View>
+                      )}
+                      <View style={styles.banquetTotal}>
+                        <Text style={styles.banquetTotalLabel}>Итого</Text>
+                        <Text style={styles.banquetTotalPrice}>{(itemsTotal + charge).toLocaleString('ru-RU')} ₸</Text>
+                      </View>
+                    </>
+                  );
+                })()}
+              </View>
+            </View>
+          </Animated.View>
+        )}
 
         {reservationStatus === 'CREATED' && (
           <Animated.View style={[{ width: '100%' }, { opacity: fadeAnim }]}>
@@ -248,6 +304,16 @@ const styles = StyleSheet.create({
   infoRow:   { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 12 },
   cardLabel: { color: 'rgba(255,255,255,0.35)', fontSize: 10, fontWeight: '700', letterSpacing: 1, marginBottom: 2 },
   infoVal:   { color: '#fff', fontSize: 14, fontWeight: '600' },
+
+  banquetRow:        { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.06)' },
+  banquetName:       { color: '#fff', fontSize: 13, fontWeight: '600', marginBottom: 2 },
+  banquetSub:        { color: 'rgba(255,255,255,0.35)', fontSize: 11 },
+  banquetQty:        { color: 'rgba(255,255,255,0.4)', fontSize: 13, marginHorizontal: 10, marginTop: 1 },
+  banquetPrice:      { color: '#fff', fontSize: 13, fontWeight: '600', minWidth: 70, textAlign: 'right', marginTop: 1 },
+  banquetChargeRow:  { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
+  banquetTotal:      { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 10, marginTop: 4, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' },
+  banquetTotalLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: '600' },
+  banquetTotalPrice: { color: '#8DBB00', fontSize: 15, fontWeight: '800' },
 
   bottomBar: {
     paddingHorizontal: 16, paddingTop: 12, paddingBottom: 46,

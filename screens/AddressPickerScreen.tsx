@@ -345,7 +345,7 @@ const styles = StyleSheet.create({
     marginBottom: 12, lineHeight: 18,
   },
 
-  saveBtn:         { backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 17, alignItems: 'center', borderWidth: 1, borderColor: GREEN },
+  saveBtn:         { backgroundColor: '#8DBB00', borderRadius: 30, paddingVertical: 18, alignItems: 'center' },
   saveBtnDisabled: { opacity: 0.4 },
-  saveBtnTxt:      { color: '#fff', fontSize: 16, fontWeight: '700' },
+  saveBtnTxt:      { color: '#fff', fontSize: 17, fontWeight: '700' },
 });

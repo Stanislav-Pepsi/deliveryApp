@@ -11,6 +11,7 @@ export interface RestaurantInfo {
   timezone?: string;
   deliveryFeeAmount: number | null;
   cashbackPercent: number | null;
+  serviceChargePercent: number | null;
 }
 
 const DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];

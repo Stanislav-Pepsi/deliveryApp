@@ -94,7 +94,6 @@ export default function AddressBookScreen({
       {/* Add new address button */}
       <View style={styles.bottom}>
         <TouchableOpacity style={styles.addBtn} onPress={onAddNew} activeOpacity={0.85}>
-          <Ionicons name="add-circle-outline" size={20} color="#fff" />
           <Text style={styles.addBtnTxt}>Добавить новый адрес</Text>
         </TouchableOpacity>
       </View>
@@ -153,9 +152,9 @@ const styles = StyleSheet.create({
     backgroundColor: BG,
   },
   addBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10,
-    backgroundColor: GREEN_DARK, borderRadius: 30,
-    paddingVertical: 17, borderWidth: 1, borderColor: GREEN,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: '#8DBB00', borderRadius: 30,
+    paddingVertical: 18,
   },
-  addBtnTxt: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  addBtnTxt: { color: '#fff', fontSize: 17, fontWeight: '700' },
 });

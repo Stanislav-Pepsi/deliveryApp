@@ -1,9 +1,11 @@
 ﻿import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   BackHandler,
   Dimensions,
   Image,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -12,9 +14,14 @@ import {
 } from 'react-native';
 import Text from '../components/Text';
 import { CartItem, DishData } from '../App';
-import { CATEGORIES, DISHES } from '../data/dishes';
+import { fetchMenu } from '../api/menu';
 
 const { width: W } = Dimensions.get('window');
+const TAG_COLORS: Record<string, string> = {
+  tag_new:   '#8DBB00',
+  tag_hit:   '#7B2FBE',
+  tag_spicy: '#E8242E',
+};
 const GREEN      = '#8DBB00';
 const GREEN_DARK = '#4a6600';
 const BG         = '#0c0f0a';
@@ -25,24 +32,41 @@ const COL_GAP    = 12;
 const CARD_W     = (W - H_PAD * 2 - COL_GAP) / 2;
 
 interface Props {
+  dishes: DishData[];
+  authToken: string | null;
   items: CartItem[];
+  serviceChargePercent?: number;
   onBack: () => void;
   onDishPress: (dish: DishData) => void;
+  onUpdateQty: (index: number, qty: number) => void;
   onDone: () => void;
 }
 
-export default function BanquetMenuScreen({ items, onBack, onDishPress, onDone }: Props) {
+export default function BanquetMenuScreen({ dishes: initialDishes, authToken, items, serviceChargePercent = 0, onBack, onDishPress, onUpdateQty, onDone }: Props) {
   const [activeCat, setActiveCat] = useState('all');
+  const [cartOpen, setCartOpen] = useState(false);
+  const [dishes, setDishes] = useState<DishData[]>(initialDishes);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetchMenu(authToken ?? '')
+      .then(setDishes)
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });
     return () => sub.remove();
   }, [onBack]);
 
-  const filtered = activeCat === 'all' ? DISHES : DISHES.filter(d => d.category === activeCat);
+  const categories = ['all', ...Array.from(new Set(dishes.map(d => d.category).filter(Boolean)))];
+  const filtered = activeCat === 'all' ? dishes : dishes.filter(d => d.category === activeCat);
 
   const totalQty = items.reduce((s, i) => s + i.qty, 0);
   const totalPrice = items.reduce((s, i) => s + i.unitPrice * i.qty, 0);
+  const serviceCharge = serviceChargePercent > 0 ? Math.round(totalPrice * serviceChargePercent / 100) : 0;
+  const grandTotal = totalPrice + serviceCharge;
 
   const qtyForDish = (id: string) =>
     items.filter(i => i.dish.id === id).reduce((s, i) => s + i.qty, 0);
@@ -59,16 +83,16 @@ export default function BanquetMenuScreen({ items, onBack, onDishPress, onDone }
           <Ionicons name="chevron-back" size={22} color="#fff" />
         </TouchableOpacity>
         <View style={styles.headerCenter}>
-          <Text style={styles.headerSub}>БАНКЕТ · ЗАЛ «БАЗИЛИК»</Text>
-          <Text style={styles.headerTitle}>Меню</Text>
+          <Text style={styles.headerTitle}>Банкетное меню</Text>
         </View>
-        {totalQty > 0 ? (
-          <TouchableOpacity style={styles.doneSmall} onPress={onDone} activeOpacity={0.8}>
-            <Text style={styles.doneSmallTxt}>Готово</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={{ width: 60 }} />
-        )}
+        <TouchableOpacity style={styles.cartBtn} onPress={() => setCartOpen(true)} activeOpacity={0.8}>
+          <Ionicons name="bag-outline" size={22} color="#fff" />
+          {totalQty > 0 && (
+            <View style={styles.cartBadge}>
+              <Text style={styles.cartBadgeTxt}>{totalQty}</Text>
+            </View>
+          )}
+        </TouchableOpacity>
       </View>
 
       {/* Category chips */}
@@ -78,15 +102,15 @@ export default function BanquetMenuScreen({ items, onBack, onDishPress, onDone }
         style={styles.catScroll}
         contentContainerStyle={styles.catContent}
       >
-        {CATEGORIES.map(c => (
+        {categories.map(c => (
           <TouchableOpacity
-            key={c.id}
-            style={[styles.catChip, activeCat === c.id && styles.catChipActive]}
-            onPress={() => setActiveCat(c.id)}
+            key={c}
+            style={[styles.catChip, activeCat === c && styles.catChipActive]}
+            onPress={() => setActiveCat(c)}
             activeOpacity={0.7}
           >
-            <Text style={[styles.catTxt, activeCat === c.id && styles.catTxtActive]}>
-              {c.label}
+            <Text style={[styles.catTxt, activeCat === c && styles.catTxtActive]}>
+              {c === 'all' ? 'ВСЕ' : c}
             </Text>
           </TouchableOpacity>
         ))}
@@ -97,31 +121,52 @@ export default function BanquetMenuScreen({ items, onBack, onDishPress, onDone }
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
+        {loading && <ActivityIndicator color={GREEN} style={{ marginTop: 40 }} />}
         <View style={styles.grid}>
-          {filtered.map(d => {
+          {!loading && filtered.map(d => {
             const qty = qtyForDish(d.id);
+            const unavailable = d.isAvailable === false;
             return (
               <TouchableOpacity
                 key={d.id}
-                style={styles.dishCard}
-                onPress={() => onDishPress(d)}
-                activeOpacity={0.85}
+                style={[styles.dishCard, unavailable && { opacity: 0.6 }]}
+                onPress={() => { if (!unavailable) onDishPress(d); }}
+                activeOpacity={unavailable ? 1 : 0.85}
               >
-                <View style={styles.imgWrap}>
-                  <Image source={d.img} style={styles.dishImg} resizeMode="cover" />
+                <View>
+                  {d.img
+                    ? <Image source={d.img} style={[styles.dishImg, unavailable && { opacity: 0.35 }]} resizeMode="cover" />
+                    : <View style={[styles.dishImg, { backgroundColor: 'rgba(255,255,255,0.04)' }]} />
+                  }
+                  {unavailable && (
+                    <View style={styles.unavailableOverlay}>
+                      <Text style={styles.unavailableOverlayTxt}>Нет в наличии</Text>
+                    </View>
+                  )}
+                  {!unavailable && (d.tags ?? []).length > 0 && (
+                    <View style={styles.tagRow}>
+                      {(d.tags ?? []).map(tag => (
+                        <View key={tag.key} style={[styles.tagBadge, { backgroundColor: TAG_COLORS[tag.key] ?? '#555' }]}>
+                          <Text style={styles.tagTxt}>{tag.label.toUpperCase()}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
                   {qty > 0 && (
                     <View style={styles.qtyBadge}>
                       <Text style={styles.qtyBadgeTxt}>{qty}</Text>
                     </View>
                   )}
                 </View>
-                <View style={styles.dishInfo}>
+                <View style={styles.dishBody}>
                   <Text style={styles.dishName} numberOfLines={2}>{d.name}</Text>
                   <Text style={styles.dishWeight}>{d.weight}</Text>
+                  <Text style={styles.dishDesc} numberOfLines={2}>{d.desc}</Text>
                   <View style={styles.priceRow}>
-                    <Text style={styles.priceText}>{d.price}</Text>
-                    <View style={styles.addIcon}>
-                      <Ionicons name="add" size={14} color="#fff" />
+                    <View style={[styles.priceBtn, unavailable && { backgroundColor: 'rgba(255,255,255,0.07)' }]}>
+                      <Text style={[styles.priceText, unavailable && { color: 'rgba(255,255,255,0.35)', fontSize: 12 }]}>
+                        {unavailable ? 'Нет в наличии' : d.price}
+                      </Text>
                     </View>
                   </View>
                 </View>
@@ -138,15 +183,78 @@ export default function BanquetMenuScreen({ items, onBack, onDishPress, onDone }
         <View style={styles.bottomBar}>
           <View style={styles.totalRow}>
             <Text style={styles.totalQtyTxt}>{totalQty} {qtyWord(totalQty)}</Text>
-            <Text style={styles.totalPriceTxt}>{totalPrice.toLocaleString('ru-RU')} ₸</Text>
+            <Text style={styles.totalPriceTxt}>{grandTotal.toLocaleString('ru-RU')} ₸</Text>
           </View>
+          {serviceCharge > 0 && (
+            <View style={styles.chargeRow}>
+              <Text style={styles.chargeTxt}>Обслуживание ({serviceChargePercent}%)</Text>
+              <Text style={styles.chargeTxt}>+{serviceCharge.toLocaleString('ru-RU')} ₸</Text>
+            </View>
+          )}
           <TouchableOpacity style={styles.doneBtn} onPress={onDone} activeOpacity={0.85}>
-            <Text style={styles.doneBtnTxt}>
-              Готово · {totalQty} {qtyWord(totalQty)}
-            </Text>
+            <Text style={styles.doneBtnTxt}>Готово · {grandTotal.toLocaleString('ru-RU')} ₸</Text>
           </TouchableOpacity>
         </View>
       )}
+
+      {/* Банкет-корзина */}
+      <Modal visible={cartOpen} transparent animationType="slide" onRequestClose={() => setCartOpen(false)}>
+        <TouchableOpacity style={styles.cartOverlay} activeOpacity={1} onPress={() => setCartOpen(false)} />
+        <View style={styles.cartSheet}>
+          <View style={styles.cartHandle} />
+          <Text style={styles.cartTitle}>Банкетный заказ</Text>
+          <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 400 }}>
+            {items.length === 0 ? (
+              <Text style={styles.cartEmpty}>Блюда не добавлены</Text>
+            ) : items.map((item, i) => (
+              <View key={i} style={styles.cartRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.cartItemName}>{item.dish.name}</Text>
+                  {(item.sizeName || item.extras.length > 0) && (
+                    <Text style={styles.cartItemExtras}>
+                      {[item.sizeName, ...item.extras.map(e => e.name)].filter(Boolean).join(' · ')}
+                    </Text>
+                  )}
+                  <Text style={styles.cartItemPrice}>{(item.unitPrice * item.qty).toLocaleString('ru-RU')} ₸</Text>
+                </View>
+                <View style={styles.qtyControl}>
+                  <TouchableOpacity style={styles.qtyBtn} onPress={() => onUpdateQty(i, item.qty - 1)} activeOpacity={0.7}>
+                    <Text style={styles.qtyBtnTxt}>−</Text>
+                  </TouchableOpacity>
+                  <Text style={styles.qtyNum}>{item.qty}</Text>
+                  <TouchableOpacity style={styles.qtyBtn} onPress={() => onUpdateQty(i, item.qty + 1)} activeOpacity={0.7}>
+                    <Text style={styles.qtyBtnTxt}>+</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
+          </ScrollView>
+          {totalQty > 0 && (
+            <View style={styles.cartFooter}>
+              {serviceCharge > 0 && (
+                <>
+                  <View style={styles.cartSummaryRow}>
+                    <Text style={styles.cartSummaryLabel}>Блюда</Text>
+                    <Text style={styles.cartSummaryVal}>{totalPrice.toLocaleString('ru-RU')} ₸</Text>
+                  </View>
+                  <View style={styles.cartSummaryRow}>
+                    <Text style={styles.cartSummaryLabel}>Обслуживание ({serviceChargePercent}%)</Text>
+                    <Text style={styles.cartSummaryVal}>+{serviceCharge.toLocaleString('ru-RU')} ₸</Text>
+                  </View>
+                  <View style={styles.cartDivider} />
+                </>
+              )}
+              <View style={styles.cartSummaryRow}>
+                <Text style={styles.cartTotalLabel}>Итого</Text>
+                <Text style={styles.cartTotalVal}>{grandTotal.toLocaleString('ru-RU')} ₸</Text>
+              </View>
+              <TouchableOpacity style={[styles.doneBtn, { marginTop: 12 }]} onPress={() => { setCartOpen(false); onDone(); }} activeOpacity={0.85}>
+                <Text style={styles.doneBtnTxt}>Готово · {grandTotal.toLocaleString('ru-RU')} ₸</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -165,7 +273,7 @@ const styles = StyleSheet.create({
   },
   headerCenter:  { flex: 1, alignItems: 'center' },
   headerSub:     { color: 'rgba(255,255,255,0.35)', fontSize: 10, fontWeight: '700', letterSpacing: 1.2, marginBottom: 3 },
-  headerTitle:   { color: '#fff', fontSize: 18, fontWeight: '700' },
+  headerTitle:   { color: '#fff', fontSize: 18, fontWeight: '700', textAlign: 'center' },
   doneSmall:     { paddingHorizontal: 14, paddingVertical: 8, backgroundColor: GREEN_DARK, borderRadius: 20, borderWidth: 1, borderColor: GREEN },
   doneSmallTxt:  { color: '#fff', fontSize: 13, fontWeight: '700' },
 
@@ -182,14 +290,11 @@ const styles = StyleSheet.create({
   grid:     { flexDirection: 'row', flexWrap: 'wrap', gap: COL_GAP },
   dishCard: {
     width: CARD_W,
-    backgroundColor: CARD,
-    borderRadius: 16,
-    borderWidth: 1, borderColor: BORDER,
+    borderRadius: 24,
     overflow: 'hidden',
-    marginBottom: 0,
+    backgroundColor: '#191414',
   },
-  imgWrap:     { position: 'relative' },
-  dishImg:     { width: CARD_W, height: CARD_W * 0.68 },
+  dishImg:     { width: '100%', height: 130 },
   qtyBadge:    {
     position: 'absolute', top: 8, right: 8,
     backgroundColor: GREEN, borderRadius: 12,
@@ -198,22 +303,70 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
   },
   qtyBadgeTxt: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  dishInfo:    { padding: 11 },
-  dishName:    { color: '#fff', fontSize: 13, fontWeight: '700', marginBottom: 3, lineHeight: 18 },
-  dishWeight:  { color: 'rgba(255,255,255,0.3)', fontSize: 11, marginBottom: 9 },
+  tagRow:    { position: 'absolute', top: 8, left: 8, flexDirection: 'column', gap: 4 },
+  tagBadge:  { borderRadius: 6, paddingHorizontal: 7, paddingVertical: 3, alignSelf: 'flex-start' },
+  tagTxt:    { color: '#fff', fontSize: 10, fontWeight: '800', letterSpacing: 0.3 },
+  unavailableOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.45)',
+  },
+  unavailableOverlayTxt: { color: 'rgba(255,255,255,0.7)', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  dishBody:    { padding: 12 },
+  dishName:    { color: '#fff', fontWeight: '700', fontSize: 14, marginBottom: 2 },
+  dishWeight:  { color: 'rgba(255,255,255,0.4)', fontSize: 12, marginBottom: 6 },
+  dishDesc:    { color: 'rgba(255,255,255,0.5)', fontSize: 12, lineHeight: 16, marginBottom: 10 },
   priceRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  priceText:   { color: GREEN, fontSize: 13, fontWeight: '700' },
+  priceBtn:    { backgroundColor: '#4b4141', borderRadius: 20, paddingVertical: 8, paddingHorizontal: 12 },
+  priceText:   { color: '#fff', fontWeight: '700', fontSize: 13 },
   addIcon:     {
-    width: 24, height: 24, borderRadius: 12,
+    width: 28, height: 28, borderRadius: 14,
     backgroundColor: GREEN_DARK,
     alignItems: 'center', justifyContent: 'center',
-    borderWidth: 1, borderColor: GREEN,
   },
 
   bottomBar:     { paddingHorizontal: 20, paddingTop: 12, paddingBottom: 46, backgroundColor: 'rgba(12,15,10,0.97)', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)', gap: 10 },
   totalRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   totalQtyTxt:   { color: 'rgba(255,255,255,0.5)', fontSize: 13 },
   totalPriceTxt: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  doneBtn:       { backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 18, alignItems: 'center', borderWidth: 1, borderColor: GREEN },
+  doneBtn:       { backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 18, alignItems: 'center' },
   doneBtnTxt:    { color: '#fff', fontSize: 17, fontWeight: '700' },
+
+  cartBtn:      { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },
+  cartBadge:    {
+    position: 'absolute', top: 4, right: 4,
+    backgroundColor: GREEN, borderRadius: 8,
+    minWidth: 16, height: 16, paddingHorizontal: 3,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  cartBadgeTxt: { color: '#fff', fontSize: 10, fontWeight: '800' },
+
+  chargeRow:   { flexDirection: 'row', justifyContent: 'space-between', marginTop: -4 },
+  chargeTxt:   { color: 'rgba(255,255,255,0.4)', fontSize: 12 },
+
+  cartFooter:       { marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' },
+  cartDivider:      { height: 1, backgroundColor: 'rgba(255,255,255,0.08)', marginVertical: 6 },
+  cartSummaryRow:   { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  cartSummaryLabel: { color: 'rgba(255,255,255,0.45)', fontSize: 13 },
+  cartSummaryVal:   { color: 'rgba(255,255,255,0.45)', fontSize: 13 },
+  cartTotalLabel:   { color: '#fff', fontSize: 14, fontWeight: '700' },
+  cartTotalVal:     { color: GREEN, fontSize: 16, fontWeight: '800' },
+
+  cartOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
+  cartSheet: {
+    backgroundColor: '#161a13', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 20, paddingBottom: 46,
+    borderTopWidth: 1, borderColor: 'rgba(255,255,255,0.08)',
+  },
+  cartHandle:    { width: 40, height: 4, backgroundColor: 'rgba(255,255,255,0.15)', borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  cartTitle:     { color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 16, textAlign: 'center' },
+  cartEmpty:     { color: 'rgba(255,255,255,0.35)', fontSize: 14, textAlign: 'center', paddingVertical: 20 },
+  cartRow:       { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  cartItemName:   { color: '#fff', fontSize: 14, fontWeight: '600', marginBottom: 2 },
+  cartItemExtras: { color: 'rgba(255,255,255,0.35)', fontSize: 11, marginBottom: 2 },
+  cartItemPrice:  { color: 'rgba(255,255,255,0.4)', fontSize: 12 },
+  qtyControl:    { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  qtyBtn:        { width: 30, height: 30, borderRadius: 15, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  qtyBtnTxt:     { color: '#fff', fontSize: 18, lineHeight: 22 },
+  qtyNum:        { color: '#fff', fontSize: 15, fontWeight: '700', minWidth: 20, textAlign: 'center' },
 });

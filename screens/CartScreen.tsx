@@ -1,4 +1,5 @@
 ﻿import { Ionicons } from '@expo/vector-icons';
+import LottieView from 'lottie-react-native';
 import { useEffect, useState } from 'react';
 import {
   BackHandler,
@@ -96,11 +97,13 @@ export default function CartScreen({ items, dishes, onUpdateQty, onBack, onCheck
       >
         {items.length === 0 ? (
           <View style={styles.emptyBox}>
-            <Text style={styles.emptyIcon}>🛒</Text>
+            <LottieView
+              source={require('../assets/animation/ccf9120e-a0dc-11ef-a2cf-cfff2d40f7be.json')}
+              autoPlay
+              loop
+              style={{ width: 180, height: 180, marginBottom: -40, marginRight: 8 }}
+            />
             <Text style={styles.emptyText}>Корзина пуста</Text>
-            <TouchableOpacity style={styles.emptyBtn} onPress={onBack} activeOpacity={0.85}>
-              <Text style={styles.emptyBtnTxt}>Перейти в меню</Text>
-            </TouchableOpacity>
           </View>
         ) : (
           <>
@@ -265,11 +268,10 @@ const styles = StyleSheet.create({
   headerTitle: { color: '#fff', fontSize: 18, fontWeight: '700', marginTop: 2 },
 
   scroll: { flex: 1 },
-  scrollContent: { paddingHorizontal: 20, paddingTop: 8 },
+  scrollContent: { paddingHorizontal: 20, paddingTop: 8, flexGrow: 1 },
 
-  emptyBox: { alignItems: 'center', paddingTop: 80, gap: 16 },
-  emptyIcon: { fontSize: 56 },
-  emptyText: { color: 'rgba(255,255,255,0.4)', fontSize: 16 },
+  emptyBox: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 0, paddingBottom: 120 },
+  emptyText: { color: 'rgba(255,255,255,0.4)', fontSize: 16, textAlign: 'center' },
   emptyBtn: {
     backgroundColor: GREEN,
     borderRadius: 30,

@@ -68,7 +68,7 @@ import { OrderSummary } from './OrdersScreen';
 const NAV = [
   { key: 'home', label: 'Главная', icon: 'home-outline' as const, iconActive: 'home' as const },
   { key: 'res', label: 'Резервы', icon: 'calendar-outline' as const, iconActive: 'calendar' as const },
-  { key: 'cart', label: 'Корзина', icon: 'bag-outline' as const, iconActive: 'bag' as const },
+  { key: 'cart', label: 'Корзина', icon: 'cart-outline' as const, iconActive: 'cart' as const },
   { key: 'prof', label: 'Профиль', icon: 'person-outline' as const, iconActive: 'person' as const },
 ];
 

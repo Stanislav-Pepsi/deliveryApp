@@ -21,16 +21,16 @@ const SHEET_BG   = '#161a13';
 const RED        = '#e05252';
 
 const MENU = [
-  { key: 'address',   icon: 'location-outline' as const, label: 'Адрес',        sub: null },
-  { key: 'orders',    icon: 'receipt-outline'  as const, label: 'Мои заказы',   sub: null },
-  { key: 'favorites', icon: 'heart-outline'    as const, label: 'Избранное',    sub: null },
-  { key: 'reserves',  icon: 'calendar-outline' as const, label: 'Мои резервы',  sub: null },
+  { key: 'address',   icon: 'location-outline' as const, label: 'Адресная книга', sub: null },
+  { key: 'favorites', icon: 'heart-outline'    as const, label: 'Избранное',      sub: null },
+  { key: 'orders',    icon: 'receipt-outline'  as const, label: 'Мои заказы',     sub: null },
+  { key: 'reserves',  icon: 'calendar-outline' as const, label: 'Мои резервы',    sub: null },
 ];
 
 const NAV = [
   { key: 'home', label: 'Главная', icon: 'home-outline'     as const, iconActive: 'home'     as const },
   { key: 'res',  label: 'Резервы', icon: 'calendar-outline' as const, iconActive: 'calendar' as const },
-  { key: 'cart', label: 'Корзина', icon: 'bag-outline'      as const, iconActive: 'bag'      as const },
+  { key: 'cart', label: 'Корзина', icon: 'cart-outline'     as const, iconActive: 'cart'     as const },
   { key: 'prof', label: 'Профиль', icon: 'person-outline'   as const, iconActive: 'person'   as const },
 ];
 
@@ -79,7 +79,6 @@ export default function ProfileScreen({
 
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerSub}>АККАУНТ</Text>
           <Text style={styles.headerTitle}>Профиль</Text>
         </View>
 
@@ -91,9 +90,9 @@ export default function ProfileScreen({
           <View style={{ flex: 1 }}>
             <TouchableOpacity style={styles.nameRow} onPress={openEdit} activeOpacity={0.7}>
               <Text style={styles.profileName} numberOfLines={1}>{name}</Text>
-              <Ionicons name="pencil-outline" size={14} color="rgba(255,255,255,0.3)" style={{ marginLeft: 7, marginTop: 2 }} />
+              <Ionicons name="create-outline" size={16} color="rgba(255,255,255,0.4)" style={{ marginLeft: 7, marginTop: 1 }} />
             </TouchableOpacity>
-            {!!phone && <Text style={styles.profilePhone}>{phone}</Text>}
+            {!!phone && <Text style={styles.profilePhone}>{phone.replace(/(\+\d)(\d{3})(\d{3})(\d{2})(\d{2})/, '$1 $2 $3 $4 $5')}</Text>}
           </View>
         </View>
 
@@ -224,7 +223,7 @@ const styles = StyleSheet.create({
   profileCard: {
     flexDirection: 'row', alignItems: 'center', gap: 16,
     backgroundColor: CARD, borderRadius: 20, padding: 18,
-    borderWidth: 1, borderColor: BORDER, marginBottom: 12,
+    marginBottom: 12,
   },
   avatar:    { width: 56, height: 56, borderRadius: 28, backgroundColor: GREEN_DARK, borderWidth: 2, borderColor: GREEN, alignItems: 'center', justifyContent: 'center' },
   avatarTxt: { color: '#fff', fontSize: 22, fontWeight: '800' },
@@ -236,7 +235,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
     backgroundColor: 'rgba(141,187,0,0.08)',
     borderRadius: 18, padding: 16,
-    borderWidth: 1, borderColor: GREEN_DARK, marginBottom: 12,
+    marginBottom: 12,
   },
   loyaltyLeft:  { flexDirection: 'row', alignItems: 'center' },
   loyaltyLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
@@ -244,7 +243,6 @@ const styles = StyleSheet.create({
 
   menuCard: {
     backgroundColor: CARD, borderRadius: 18,
-    borderWidth: 1, borderColor: BORDER,
     marginBottom: 12, overflow: 'hidden',
   },
   menuRow:        { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 14 },
@@ -257,7 +255,6 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 12,
     backgroundColor: 'rgba(224,82,82,0.08)',
     borderRadius: 18, padding: 16,
-    borderWidth: 1, borderColor: 'rgba(224,82,82,0.2)',
   },
   logoutTxt: { color: RED, fontSize: 15, fontWeight: '600' },
 

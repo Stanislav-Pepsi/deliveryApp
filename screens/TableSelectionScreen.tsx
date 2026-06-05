@@ -30,10 +30,13 @@ interface Props {
   guests: number;
   bookType: 'table' | 'banquet';
   banquetItems: BanquetOrderItem[];
+  banquetTotal?: number;
+  serviceChargePercent?: number;
   phone: string;
   tableId: string | null;
   onTableChange: (id: string | null) => void;
   onBack: () => void;
+  onBanquetMenu?: () => void;
   onConfirm: (result: { reservationId: string; tableName: string; tableNumber?: number; sectionName?: string; guests: number; comment?: string }) => void;
   authToken: string | null;
 }
@@ -45,8 +48,8 @@ function formatDate(s: string) {
 }
 
 export default function TableSelectionScreen({
-  date, time, guests, bookType, banquetItems, phone,
-  tableId, onTableChange, onBack, onConfirm, authToken,
+  date, time, guests, bookType, banquetItems, banquetTotal, serviceChargePercent, phone,
+  tableId, onTableChange, onBack, onBanquetMenu, onConfirm, authToken,
 }: Props) {
   const [sections, setSections] = useState<TableSection[]>([]);
   const [sectionId, setSectionId] = useState('');
@@ -108,7 +111,7 @@ export default function TableSelectionScreen({
         authToken,
       );
       const section = sections.find(s => s.tables.some(t => t.id === selTable.id));
-      onConfirm({ reservationId: data.id, tableName: selTable.name, tableNumber: selTable.number || undefined, sectionName: selectedSectionName || section?.name, guests: localGuests, comment: comment.trim() || undefined });
+      onConfirm({ reservationId: data.reservationId ?? data.id, tableName: selTable.name, tableNumber: selTable.number || undefined, sectionName: selectedSectionName || section?.name, guests: localGuests, comment: comment.trim() || undefined });
     } catch (e: any) {
       const msg = e.message || 'Ошибка создания резерва';
       setConfirmError(msg);
@@ -247,6 +250,29 @@ export default function TableSelectionScreen({
           maxLength={200}
         />
 
+        {bookType === 'banquet' && (
+          <TouchableOpacity
+            style={styles.banquetMenuBtn}
+            activeOpacity={0.8}
+            onPress={onBanquetMenu}
+          >
+            <Ionicons name="clipboard-outline" size={16} color={GREEN} />
+            <Text style={styles.banquetMenuTxt}>
+              {'Банкетное меню'}
+            </Text>
+            {banquetItems.length > 0 && (() => {
+              const charge = banquetTotal && serviceChargePercent ? Math.round(banquetTotal * serviceChargePercent / 100) : 0;
+              const total = (banquetTotal ?? 0) + charge;
+              return (
+                <Text style={styles.banquetMenuSub}>
+                  {banquetItems.reduce((s, i) => s + i.amount, 0)} поз.{total > 0 ? ` · ${total.toLocaleString('ru-RU')} ₸` : ''}
+                </Text>
+              );
+            })()}
+            <Ionicons name="chevron-forward" size={16} color={GREEN} />
+          </TouchableOpacity>
+        )}
+
         {!!confirmError && <Text style={styles.errorTxt}>{confirmError}</Text>}
 
         <TouchableOpacity
@@ -334,11 +360,19 @@ const styles = StyleSheet.create({
 
   commentInput: {
     backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    borderRadius: 14,
     color: '#fff', fontSize: 14, paddingHorizontal: 14, paddingVertical: 12,
     minHeight: 44, textAlignVertical: 'top',
   },
-  confirmBtn:    { backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 18, alignItems: 'center', borderWidth: 1, borderColor: GREEN },
+  confirmBtn:    { backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 18, alignItems: 'center' },
   confirmBtnOff: { opacity: 0.4 },
   confirmTxt:    { color: '#fff', fontSize: 17, fontWeight: '700' },
+
+  banquetMenuBtn: {
+    flexDirection: 'row', alignItems: 'center',
+    backgroundColor: 'rgba(141,187,0,0.08)', borderRadius: 14,
+    paddingHorizontal: 16, paddingVertical: 14,
+  },
+  banquetMenuTxt: { flex: 1, color: GREEN, fontSize: 14, fontWeight: '600', marginHorizontal: 10 },
+  banquetMenuSub: { color: 'rgba(141,187,0,0.7)', fontSize: 12, marginRight: 6 },
 });

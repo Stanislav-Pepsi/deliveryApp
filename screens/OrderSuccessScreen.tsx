@@ -22,7 +22,7 @@ const BG = '#0c0f0a';
 const CARD = 'rgba(255,255,255,0.06)';
 const BORDER = 'rgba(255,255,255,0.1)';
 
-const WS_URL = 'https://nonvirulently-nonpursuant-georgie.ngrok-free.dev';
+const WS_URL = 'https://api.starten.kz';
 
 interface Props {
   total: number;
@@ -565,10 +565,9 @@ const styles = StyleSheet.create({
 
   btns: { width: '100%', gap: 12 },
   primaryBtn: {
-    backgroundColor: GREEN_DARK,
+    backgroundColor: GREEN,
     borderRadius: 30, paddingVertical: 18,
     alignItems: 'center',
-    borderWidth: 1, borderColor: GREEN,
   },
   primaryBtnTxt: { color: '#fff', fontSize: 17, fontWeight: '700' },
 

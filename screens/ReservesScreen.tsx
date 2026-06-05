@@ -9,7 +9,7 @@ import {
   View,
 } from 'react-native';
 import Text from '../components/Text';
-import { UserReservation, fetchUserReservations } from '../api/reservations';
+import { UserReservation, fetchUserReservations, fetchSections } from '../api/reservations';
 
 const GREEN      = '#8DBB00';
 const GREEN_DARK = '#4a6600';
@@ -25,39 +25,59 @@ const STATUS_MAP: Record<string, { label: string; active: boolean }> = {
   COMPLETED:  { label: 'Завершено',    active: false },
 };
 
-interface MappedReserve {
+export interface MappedReserve {
   id: string;
   place: string;
+  sectionName?: string;
   date: string;
   time?: string;
+  createdAt?: string;
   guests: number;
   status: string;
   active: boolean;
+  comment?: string;
+}
+
+function formatApiDate(raw: string): { date: string; time: string | undefined } {
+  const sep = raw.includes('T') ? 'T' : ' ';
+  const dt = raw.split(sep);
+  const parts = (dt[0] ?? '').split('-');
+  const date = parts.length === 3 ? `${parts[2]}.${parts[1]}.${parts[0]}` : raw;
+  const time = dt[1]?.slice(0, 5);
+  return { date, time };
 }
 
 function mapReservation(r: UserReservation): MappedReserve {
-  const rawDt = r.estimatedStartTime ?? r.dateTime ?? '';
-  const dt = rawDt.split(' ');
-  const dateParts = (dt[0] ?? '').split('-');
-  const date = dateParts.length === 3
-    ? `${dateParts[2]}.${dateParts[1]}.${dateParts[0]}`
-    : rawDt;
-  const time = dt[1]?.slice(0, 5);
-  const place = r.place
-    ?? (r.tableNumber != null
-      ? `Стол №${r.tableNumber}${r.sectionName ? `, ${r.sectionName}` : ''}`
-      : 'Резервация');
+  const { date, time } = formatApiDate(r.estimatedStartTime ?? r.dateTime ?? '');
+  const table = r.tables?.[0];
+  const rawNumber = (table?.number ?? r.tableNumber ?? 0);
+  const rawName = table?.name ?? r.tableName ?? '';
+  const rawSection = table?.sectionName ?? r.sectionName;
+  const place = rawNumber > 0
+    ? String(rawNumber)
+    : (/^\d+$/.test(rawName) ? rawName : null)
+    ?? r.place
+    ?? '';
+  const createdAt = r.createdAt
+    ? formatApiDate(r.createdAt).date + (formatApiDate(r.createdAt).time ? ` · ${formatApiDate(r.createdAt).time}` : '')
+    : undefined;
   const guestsVal = r.guestsCount ?? r.guests ?? 0;
   const { label, active } = STATUS_MAP[r.status] ?? { label: r.status, active: false };
-  return { id: r.id, place, date, time, guests: guestsVal, status: label, active };
+  return {
+    id: r.id, place, sectionName: rawSection ?? undefined,
+    date, time, createdAt,
+    guests: guestsVal, status: label, active,
+    comment: r.comment,
+  };
 }
 
 interface Props {
   onBack: () => void;
   authToken: string | null;
+  onReservationPress: (r: MappedReserve) => void;
 }
 
-export default function ReservesScreen({ onBack, authToken }: Props) {
+export default function ReservesScreen({ onBack, authToken, onReservationPress }: Props) {
   const [reserves, setReserves]       = useState<MappedReserve[]>([]);
   const [loading, setLoading]         = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -66,14 +86,18 @@ export default function ReservesScreen({ onBack, authToken }: Props) {
 
   useEffect(() => {
     if (!authToken) { setLoading(false); return; }
-    fetchUserReservations(authToken, 1, 20)
-      .then(res => {
-        setReserves(res.data.map(mapReservation));
-        setHasMore(20 < res.total);
-        pageRef.current = 1;
-      })
+    fetchSections()
       .catch(() => {})
-      .finally(() => setLoading(false));
+      .finally(() => {
+        fetchUserReservations(authToken, 1, 20)
+          .then(res => {
+            setReserves(res.data.map(mapReservation));
+            setHasMore(20 < res.total);
+            pageRef.current = 1;
+          })
+          .catch(() => {})
+          .finally(() => setLoading(false));
+      });
   }, [authToken]);
 
   const loadMore = async () => {
@@ -93,7 +117,7 @@ export default function ReservesScreen({ onBack, authToken }: Props) {
   const past    = reserves.filter(r => !r.active);
 
   const renderReserve = (r: MappedReserve) => (
-    <View key={r.id} style={[styles.card, !r.active && styles.cardDim]}>
+    <TouchableOpacity key={r.id} style={[styles.card, !r.active && styles.cardDim]} onPress={() => onReservationPress(r)} activeOpacity={0.75}>
       <View style={styles.cardTop}>
         <View style={styles.iconBox}>
           <Ionicons name="restaurant-outline" size={18} color={r.active ? GREEN : 'rgba(255,255,255,0.3)'} />
@@ -105,7 +129,9 @@ export default function ReservesScreen({ onBack, authToken }: Props) {
         </View>
       </View>
 
-      <Text style={[styles.place, !r.active && styles.textDim]}>{r.place}</Text>
+      <Text style={[styles.place, !r.active && styles.textDim]}>
+        {[r.sectionName, r.place && /^\d+$/.test(r.place) ? `Номер стола: ${r.place}` : null].filter(Boolean).join(' · ')}
+      </Text>
 
       <View style={styles.detailsRow}>
         <View style={styles.detailItem}>
@@ -121,7 +147,7 @@ export default function ReservesScreen({ onBack, authToken }: Props) {
           </Text>
         </View>
       </View>
-    </View>
+    </TouchableOpacity>
   );
 
   return (

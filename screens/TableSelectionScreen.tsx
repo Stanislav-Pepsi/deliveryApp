@@ -3,9 +3,12 @@ import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
   BackHandler,
+  KeyboardAvoidingView,
+  Platform,
   ScrollView,
   StatusBar,
   StyleSheet,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -31,7 +34,7 @@ interface Props {
   tableId: string | null;
   onTableChange: (id: string | null) => void;
   onBack: () => void;
-  onConfirm: () => void;
+  onConfirm: (result: { reservationId: string; tableName: string; tableNumber?: number; sectionName?: string; guests: number; comment?: string }) => void;
   authToken: string | null;
 }
 
@@ -51,6 +54,9 @@ export default function TableSelectionScreen({
   const [loadError, setLoadError] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState('');
+  const [localGuests, setLocalGuests] = useState(guests);
+  const [comment, setComment] = useState('');
+  const [selectedSectionName, setSelectedSectionName] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });
@@ -60,7 +66,12 @@ export default function TableSelectionScreen({
   useEffect(() => {
     setLoading(true);
     setLoadError('');
-    fetchSections()
+    const [d, m, y] = date.split('.');
+    fetchSections({
+      date: `${y}-${m}-${d}`,
+      time,
+      duration: bookType === 'banquet' ? 180 : 120,
+    })
       .then(data => {
         setSections(data);
         if (data.length > 0) setSectionId(data[0].id);
@@ -83,21 +94,28 @@ export default function TableSelectionScreen({
       const [d, m, y] = date.split('.');
       const estimatedStartTime = `${y}-${m}-${d} ${time}:00`;
       const isBanquet = bookType === 'banquet';
-      await createReservation(
+      const data = await createReservation(
         {
           type: isBanquet ? 'BANQUET' : 'TABLE',
           tableIds: [selTable.id],
           estimatedStartTime,
           durationInMinutes: isBanquet ? 180 : 120,
-          guestsCount: guests,
+          guestsCount: localGuests,
           phone,
+          comment: comment.trim() || undefined,
           items: isBanquet && banquetItems.length > 0 ? banquetItems : undefined,
         },
         authToken,
       );
-      onConfirm();
+      const section = sections.find(s => s.tables.some(t => t.id === selTable.id));
+      onConfirm({ reservationId: data.id, tableName: selTable.name, tableNumber: selTable.number || undefined, sectionName: selectedSectionName || section?.name, guests: localGuests, comment: comment.trim() || undefined });
     } catch (e: any) {
-      setConfirmError(e.message || 'Ошибка создания резерва');
+      const msg = e.message || 'Ошибка создания резерва';
+      setConfirmError(msg);
+      if (e.status === 409 || msg.includes('уже забронирован')) {
+        onTableChange(null);
+        setSelectedSectionName(undefined);
+      }
     } finally {
       setConfirming(false);
     }
@@ -111,7 +129,7 @@ export default function TableSelectionScreen({
   }
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       <View style={styles.header}>
@@ -158,17 +176,22 @@ export default function TableSelectionScreen({
           <View style={styles.planCard}>
             {rows.map((row, ri) => (
               <View key={ri} style={styles.gridRow}>
-                {row.map((table, di) => {
-                  const isSel = table.id === tableId;
+                {row.map((table) => {
+                  const isSel      = table.id === tableId;
+                  const unavailable = table.isAvailable === false;
                   return (
                     <TouchableOpacity
                       key={table.id}
-                      style={[styles.cell, isSel && styles.cellSel]}
-                      onPress={() => onTableChange(isSel ? null : table.id)}
-                      activeOpacity={0.7}
+                      style={[styles.cell, isSel && styles.cellSel, unavailable && styles.cellUnavailable]}
+                      onPress={() => {
+                        if (unavailable) return;
+                        if (isSel) { onTableChange(null); setSelectedSectionName(undefined); }
+                        else { onTableChange(table.id); setLocalGuests(g => Math.min(g, table.seatingCapacity)); setSelectedSectionName(currentSection?.name); }
+                      }}
+                      activeOpacity={unavailable ? 1 : 0.7}
                     >
-                      <Text style={[styles.cellNum, isSel && styles.cellNumSel]}>
-                        {ri * 4 + di + 1}
+                      <Text style={[styles.cellNum, isSel && styles.cellNumSel, unavailable && styles.cellNumUnavailable]}>
+                        {table.number > 0 ? table.number : table.name}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -188,12 +211,41 @@ export default function TableSelectionScreen({
               <Text style={styles.selLabel}>{selTable.name}</Text>
               <Text style={styles.selFurn}>{selTable.seatingCapacity} мест</Text>
             </View>
-            <Text style={styles.selBigNum}>{guests}</Text>
+            <View style={styles.guestsControl}>
+              <TouchableOpacity
+                style={[styles.qtyBtn, localGuests <= 1 && styles.qtyBtnOff]}
+                onPress={() => setLocalGuests(g => Math.max(1, g - 1))}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.qtyBtnTxt}>−</Text>
+              </TouchableOpacity>
+              <View style={{ alignItems: 'center' }}>
+                <Text style={styles.guestsHint}>ГОСТЕЙ</Text>
+                <Text style={styles.selBigNum}>{localGuests}</Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.qtyBtn, localGuests >= selTable.seatingCapacity && styles.qtyBtnOff]}
+                onPress={() => setLocalGuests(g => Math.min(selTable.seatingCapacity, g + 1))}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.qtyBtnTxt}>+</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           <Text style={styles.selHint}>Нажмите на стол, чтобы выбрать</Text>
         )}
 
+
+        <TextInput
+          style={styles.commentInput}
+          placeholder="Комментарий (необязательно)"
+          placeholderTextColor="rgba(255,255,255,0.25)"
+          value={comment}
+          onChangeText={setComment}
+          multiline
+          maxLength={200}
+        />
 
         {!!confirmError && <Text style={styles.errorTxt}>{confirmError}</Text>}
 
@@ -209,7 +261,7 @@ export default function TableSelectionScreen({
           }
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -257,9 +309,11 @@ const styles = StyleSheet.create({
     borderRadius: 12, alignItems: 'center', justifyContent: 'center',
     borderWidth: 1, borderColor: 'rgba(255,255,255,0.12)',
   },
-  cellSel:     { backgroundColor: GREEN, borderColor: GREEN },
-  cellNum:     { color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: '700', textAlign: 'center' },
-  cellNumSel:  { color: '#fff' },
+  cellSel:          { backgroundColor: GREEN, borderColor: GREEN },
+  cellUnavailable:  { backgroundColor: 'rgba(255,255,255,0.03)', borderColor: 'rgba(255,255,255,0.06)', opacity: 0.4 },
+  cellNum:          { color: 'rgba(255,255,255,0.75)', fontSize: 14, fontWeight: '700', textAlign: 'center' },
+  cellNumSel:       { color: '#fff' },
+  cellNumUnavailable: { color: 'rgba(255,255,255,0.3)' },
 
   bottomBar: {
     paddingHorizontal: 20, paddingTop: 12, paddingBottom: 46,
@@ -267,12 +321,23 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)',
     gap: 10,
   },
-  selCard:     { flexDirection: 'row', alignItems: 'center', backgroundColor: CARD, borderRadius: 14, padding: 14, borderWidth: 1, borderColor: BORDER },
-  selLabel:    { color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 2 },
-  selFurn:     { color: 'rgba(255,255,255,0.45)', fontSize: 12 },
-  selBigNum:   { color: GREEN, fontSize: 38, fontWeight: '800', marginLeft: 8 },
+  selCard:        { flexDirection: 'row', alignItems: 'center', padding: 14 },
+  selLabel:       { color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 2 },
+  selFurn:        { color: 'rgba(255,255,255,0.45)', fontSize: 12 },
+  selBigNum:      { color: GREEN, fontSize: 38, fontWeight: '800', minWidth: 44, textAlign: 'center' },
+  guestsControl:  { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  guestsHint:     { color: 'rgba(255,255,255,0.35)', fontSize: 9, fontWeight: '700', letterSpacing: 1 },
+  qtyBtn:         { width: 32, height: 32, borderRadius: 16, backgroundColor: 'rgba(255,255,255,0.1)', alignItems: 'center', justifyContent: 'center' },
+  qtyBtnOff:      { opacity: 0.3 },
+  qtyBtnTxt:      { color: '#fff', fontSize: 20, fontWeight: '400', lineHeight: 24 },
   selHint:     { color: 'rgba(255,255,255,0.25)', fontSize: 13, textAlign: 'center', paddingVertical: 6 },
 
+  commentInput: {
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderRadius: 14, borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+    color: '#fff', fontSize: 14, paddingHorizontal: 14, paddingVertical: 12,
+    minHeight: 44, textAlignVertical: 'top',
+  },
   confirmBtn:    { backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 18, alignItems: 'center', borderWidth: 1, borderColor: GREEN },
   confirmBtnOff: { opacity: 0.4 },
   confirmTxt:    { color: '#fff', fontSize: 17, fontWeight: '700' },

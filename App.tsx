@@ -19,8 +19,11 @@ import OrderSuccessScreen from './screens/OrderSuccessScreen';
 import OrdersScreen, { OrderSummary } from './screens/OrdersScreen';
 import LoyaltyScreen from './screens/LoyaltyScreen';
 import FavoritesScreen from './screens/FavoritesScreen';
+import ReservationDetailScreen from './screens/ReservationDetailScreen';
 import ReservationScreen from './screens/ReservationScreen';
+import ReservationSuccessScreen, { ReservationResult } from './screens/ReservationSuccessScreen';
 import ReservesScreen from './screens/ReservesScreen';
+import { MappedReserve } from './screens/ReservesScreen';
 import TableSelectionScreen from './screens/TableSelectionScreen';
 import { fetchFavorites, addFavorite, removeFavorite } from './api/favorites';
 
@@ -99,7 +102,7 @@ export interface CartItem {
 
 type Screen =
   | 'login' | 'home' | 'dish' | 'cart' | 'checkout' | 'success'
-  | 'reservation' | 'tableSelection' | 'banquetMenu' | 'banquetDish'
+  | 'reservation' | 'tableSelection' | 'reservationSuccess' | 'reservationDetail' | 'banquetMenu' | 'banquetDish'
   | 'profile' | 'orders' | 'viewOrder' | 'reserves' | 'loyalty'
   | 'addressBook' | 'addressPicker' | 'favorites';
 
@@ -124,7 +127,9 @@ export default function App() {
   const [selectedDish, setSelectedDish] = useState<DishData | null>(null);
   const [cart, setCart]               = useState<CartItem[]>([]);
   const [orderInfo, setOrderInfo]     = useState<OrderInfo | null>(null);
-  const [resDetails, setResDetails]   = useState<{ date: string; time: string; guests: number; bookType: 'table' | 'banquet' } | null>(null);
+  const [resDetails, setResDetails]         = useState<{ date: string; time: string; guests: number; bookType: 'table' | 'banquet' } | null>(null);
+  const [reservationResult, setReservationResult]   = useState<ReservationResult | null>(null);
+  const [selectedReserve, setSelectedReserve]       = useState<MappedReserve | null>(null);
   const [profileName, setProfileName]     = useState('Алексей Морозов');
   const [banquetItems, setBanquetItems]   = useState<CartItem[]>([]);
   const [banquetDish, setBanquetDish]     = useState<DishData | null>(null);
@@ -367,8 +372,45 @@ export default function App() {
         tableId={banquetTableId}
         onTableChange={setBanquetTableId}
         onBack={() => setScreen('reservation')}
-        onConfirm={() => { setBanquetItems([]); setBanquetTableId(null); setScreen('home'); }}
+        onConfirm={({ reservationId, tableName, tableNumber, sectionName, guests, comment }) => {
+          setReservationResult({
+            reservationId,
+            tableName,
+            tableNumber,
+            sectionName,
+            date: resDetails!.date,
+            time: resDetails!.time,
+            guests,
+            bookType: resDetails!.bookType,
+            comment,
+          });
+          setBanquetItems([]);
+          setBanquetTableId(null);
+          setScreen('reservationSuccess');
+        }}
         authToken={authToken}
+      />
+    );
+  }
+  if (screen === 'reservationSuccess' && reservationResult) {
+    return (
+      <ReservationSuccessScreen
+        result={reservationResult}
+        authToken={authToken}
+        restaurantInfo={restaurantInfo}
+        onGoHome={() => { setReservationResult(null); setResDetails(null); setScreen('home'); }}
+        onConfirmed={() => { setReservationResult(null); setResDetails(null); setScreen('reserves'); }}
+      />
+    );
+  }
+  if (screen === 'reservationDetail' && selectedReserve) {
+    return (
+      <ReservationDetailScreen
+        reserve={selectedReserve}
+        authToken={authToken}
+        restaurantInfo={restaurantInfo}
+        onBack={() => setScreen('reserves')}
+        onCancelled={() => { setSelectedReserve(null); setScreen('reserves'); }}
       />
     );
   }
@@ -424,7 +466,11 @@ export default function App() {
     );
   }
   if (screen === 'reserves') {
-    return <ReservesScreen onBack={() => setScreen('profile')} authToken={authToken} />;
+    return <ReservesScreen
+      onBack={() => setScreen('profile')}
+      authToken={authToken}
+      onReservationPress={r => { setSelectedReserve(r); setScreen('reservationDetail'); }}
+    />;
   }
   if (screen === 'profile') {
     return (

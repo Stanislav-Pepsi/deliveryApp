@@ -124,6 +124,21 @@ export default function ReservationScreen({ onBack, onNext, restaurantInfo }: Pr
     d === now.getDate() && m === now.getMonth() && y === now.getFullYear();
   const isSelected = (d: number, m: number, y: number) =>
     selDate?.d === d && selDate?.m === m && selDate?.y === y;
+  const isPast     = (d: number, m: number, y: number) =>
+    new Date(y, m, d) < new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const maxDate    = new Date(now.getFullYear(), now.getMonth() + 1, now.getDate());
+  const isTooFar   = (d: number, m: number, y: number) =>
+    new Date(y, m, d) > maxDate;
+
+  const selDateIsToday = selDate
+    ? isToday(selDate.d, selDate.m, selDate.y)
+    : false;
+  const minMinutesFromNow = 30;
+  const timeInPast = selDateIsToday && (() => {
+    const selected = new Date(now.getFullYear(), now.getMonth(), now.getDate(), selHour % 24, selMin);
+    const limit    = new Date(now.getTime() + minMinutesFromNow * 60 * 1000);
+    return selected < limit;
+  })();
 
   return (
     <View style={styles.root}>
@@ -150,11 +165,7 @@ export default function ReservationScreen({ onBack, onNext, restaurantInfo }: Pr
               onPress={() => setBookType(t.key)}
               activeOpacity={0.8}
             >
-              {bookType === t.key && (
-                <View style={styles.typeCheck}>
-                  <Ionicons name="checkmark" size={11} color="#fff" />
-                </View>
-              )}
+
               <Ionicons
                 name={t.icon}
                 size={28}
@@ -175,7 +186,6 @@ export default function ReservationScreen({ onBack, onNext, restaurantInfo }: Pr
             <Text style={styles.locName}>{restaurantInfo?.name ?? 'Ресторан'}</Text>
             <Text style={styles.locSub}>{restaurantInfo?.address ?? ''}</Text>
           </View>
-          <Ionicons name="chevron-forward" size={18} color="rgba(255,255,255,0.3)" />
         </TouchableOpacity>
 
         {/* Date + Time */}
@@ -208,42 +218,22 @@ export default function ReservationScreen({ onBack, onNext, restaurantInfo }: Pr
           </TouchableOpacity>
         </View>
 
-        {/* Guests */}
-        <Text style={styles.sLabel}>ГОСТЕЙ</Text>
-        <View style={styles.guestsCard}>
-          <View>
-            <Text style={styles.guestsLabel}>Количество</Text>
-            <Text style={styles.guestsSub}>от 1 до 12 гостей</Text>
-          </View>
-          <View style={styles.qtyRow}>
-            <TouchableOpacity
-              style={[styles.qtyBtn, guests <= 1 && styles.qtyBtnOff]}
-              onPress={() => setGuests(g => Math.max(1, g - 1))}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.qtyBtnTxt}>−</Text>
-            </TouchableOpacity>
-            <Text style={styles.qtyNum}>{guests}</Text>
-            <TouchableOpacity
-              style={[styles.qtyBtn, guests >= 12 && styles.qtyBtnOff]}
-              onPress={() => setGuests(g => Math.min(12, g + 1))}
-              activeOpacity={0.7}
-            >
-              <Text style={styles.qtyBtnTxt}>+</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
 
         <View style={{ height: 120 }} />
       </ScrollView>
 
       {/* Submit */}
       <View style={styles.bottomBar}>
+        {timeInPast && (
+          <Text style={styles.timeError}>
+            Выберите время минимум через {minMinutesFromNow} мин от текущего
+          </Text>
+        )}
         <TouchableOpacity
-          style={[styles.submitBtn, !selDate && styles.submitBtnOff]}
+          style={[styles.submitBtn, (!selDate || timeInPast) && styles.submitBtnOff]}
           activeOpacity={0.85}
-          disabled={!selDate}
-          onPress={() => selDate && onNext(dateStr!, timeStr, guests, bookType as 'table' | 'banquet')}
+          disabled={!selDate || timeInPast}
+          onPress={() => selDate && !timeInPast && onNext(dateStr!, timeStr, guests, bookType as 'table' | 'banquet')}
         >
           <Text style={styles.submitTxt}>Далее</Text>
         </TouchableOpacity>
@@ -278,10 +268,11 @@ export default function ReservationScreen({ onBack, onNext, restaurantInfo }: Pr
             {rows.map((week, wi) => (
               <View key={wi} style={styles.weekRow}>
                 {week.map((cell, di) => {
-                  const isCurr = cell.type === 'curr';
-                  const isTod  = isCurr && isToday(cell.day, calMonth, calYear);
-                  const isSel  = isCurr && isSelected(cell.day, calMonth, calYear);
-                  const isWknd = di >= 5;
+                  const isCurr    = cell.type === 'curr';
+                  const isTod     = isCurr && isToday(cell.day, calMonth, calYear);
+                  const isSel     = isCurr && isSelected(cell.day, calMonth, calYear);
+                  const isWknd    = di >= 5;
+                  const isDisabled = !isCurr || isPast(cell.day, calMonth, calYear) || isTooFar(cell.day, calMonth, calYear);
                   return (
                     <TouchableOpacity
                       key={di}
@@ -291,16 +282,16 @@ export default function ReservationScreen({ onBack, onNext, restaurantInfo }: Pr
                         isSel && styles.dayCellSel,
                       ]}
                       onPress={() => {
-                        if (!isCurr) return;
+                        if (isDisabled) return;
                         setSelDate({ d: cell.day, m: calMonth, y: calYear });
                         setCalOpen(false);
                       }}
-                      activeOpacity={isCurr ? 0.7 : 1}
+                      activeOpacity={isDisabled ? 1 : 0.7}
                     >
                       <Text style={[
                         styles.dayNum,
-                        !isCurr && styles.dayNumFaded,
-                        isWknd && isCurr && !isSel && styles.dayNumWknd,
+                        isDisabled && styles.dayNumFaded,
+                        isWknd && !isDisabled && !isSel && styles.dayNumWknd,
                         isTod  && !isSel && styles.dayNumToday,
                         isSel  && styles.dayNumSel,
                       ]}>
@@ -455,6 +446,7 @@ const styles = StyleSheet.create({
   typeCard: {
     flex: 1, backgroundColor: CARD, borderRadius: 16, padding: 16,
     borderWidth: 1.5, borderColor: BORDER, position: 'relative',
+    alignItems: 'center',
   },
   typeCardActive: { borderColor: GREEN, backgroundColor: 'rgba(141,187,0,0.08)' },
   typeCheck: {
@@ -462,9 +454,9 @@ const styles = StyleSheet.create({
     width: 20, height: 20, borderRadius: 10,
     backgroundColor: GREEN, alignItems: 'center', justifyContent: 'center',
   },
-  typeLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 16, fontWeight: '700', marginBottom: 3 },
+  typeLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 16, fontWeight: '700', marginBottom: 3, textAlign: 'center' },
   typeLabelActive: { color: '#fff' },
-  typeSub: { color: 'rgba(255,255,255,0.3)', fontSize: 12 },
+  typeSub: { color: 'rgba(255,255,255,0.3)', fontSize: 12, textAlign: 'center' },
   typeSubActive: { color: 'rgba(255,255,255,0.55)' },
 
   locationCard: {
@@ -519,7 +511,8 @@ const styles = StyleSheet.create({
     alignItems: 'center', borderWidth: 1, borderColor: GREEN,
   },
   submitBtnOff: { opacity: 0.4 },
-  submitTxt: { color: '#fff', fontSize: 17, fontWeight: '700' },
+  submitTxt:    { color: '#fff', fontSize: 17, fontWeight: '700' },
+  timeError:    { color: '#e05252', fontSize: 12, fontWeight: '600', textAlign: 'center', marginBottom: 8 },
 
   // ── Modals ──
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },

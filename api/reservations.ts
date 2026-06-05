@@ -2,14 +2,65 @@ import { BASE_URL, baseHeaders } from './config';
 
 export interface ApiTable {
   id: string;
+  number: number;
   name: string;
   seatingCapacity: number;
+  isAvailable: boolean;
+}
+
+export interface SchemaColor {
+  r?: number; g?: number; b?: number; a?: number;
+}
+
+export interface SchemaTableElement {
+  tableId: string;
+  x: number; y: number; z: number;
+  width: number; height: number; angle: number;
+}
+
+export interface SchemaRectElement {
+  x: number; y: number; z: number;
+  width: number; height: number; angle: number;
+  color?: SchemaColor;
+}
+
+export interface SchemaEllipseElement {
+  x: number; y: number; z: number;
+  width: number; height: number; angle: number;
+  color?: SchemaColor;
+}
+
+export interface SchemaMarkElement {
+  x: number; y: number; z: number;
+  width: number; height: number; angle: number;
+  text: string;
+  font?: any;
+  color?: SchemaColor;
+}
+
+export interface SectionSchema {
+  width: number;
+  height: number;
+  tableElements: SchemaTableElement[];
+  rectangleElements: SchemaRectElement[];
+  ellipseElements: SchemaEllipseElement[];
+  markElements: SchemaMarkElement[];
+  revision: number;
+  isDeleted: boolean;
 }
 
 export interface TableSection {
   id: string;
   name: string;
   tables: ApiTable[];
+  schema?: SectionSchema | null;
+}
+
+export interface ReservationTable {
+  id: string;
+  name?: string | null;
+  number?: number | null;
+  sectionName?: string | null;
 }
 
 export interface UserReservation {
@@ -18,11 +69,15 @@ export interface UserReservation {
   type?: string;
   estimatedStartTime?: string;
   dateTime?: string;
+  createdAt?: string;
   guestsCount?: number;
   guests?: number;
   tableNumber?: number;
+  tableName?: string;
   sectionName?: string;
   place?: string;
+  comment?: string;
+  tables?: ReservationTable[];
 }
 
 export interface BanquetOrderItem {
@@ -41,8 +96,11 @@ export interface CreateReservationParams {
   items?: BanquetOrderItem[];
 }
 
-export async function fetchSections(): Promise<TableSection[]> {
-  const res = await fetch(`${BASE_URL}/reservations/sections`, {
+export async function fetchSections(params?: { date?: string; time?: string; duration?: number }): Promise<TableSection[]> {
+  const query = params
+    ? '?' + Object.entries(params).filter(([, v]) => v != null).map(([k, v]) => `${k}=${v}`).join('&')
+    : '';
+  const res = await fetch(`${BASE_URL}/reservations/sections${query}`, {
     headers: baseHeaders(),
   });
   if (!res.ok) throw new Error('Ошибка загрузки залов');
@@ -59,7 +117,11 @@ export async function createReservation(
     body: JSON.stringify(params),
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.message || 'Ошибка создания резерва');
+  if (!res.ok) {
+    const err: any = new Error(data.message || 'Ошибка создания резерва');
+    err.status = res.status;
+    throw err;
+  }
   return data;
 }
 

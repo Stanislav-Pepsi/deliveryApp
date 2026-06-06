@@ -5,6 +5,7 @@ import {
   Animated,
   ActivityIndicator,
   Keyboard,
+  PanResponder,
   Platform,
   StatusBar,
   StyleSheet,
@@ -32,23 +33,53 @@ const DEFAULT_REGION: Region = {
 
 interface Props {
   initialAddress?: string;
+  initialLabel?: string;
   onSave: (input: AddressInput, display: string) => void;
   onBack: () => void;
 }
 
-export default function AddressPickerScreen({ initialAddress, onSave, onBack }: Props) {
+export default function AddressPickerScreen({ initialAddress, initialLabel, onSave, onBack }: Props) {
   const mapRef  = useRef<MapView>(null);
   const [region, setRegion]         = useState<Region>(DEFAULT_REGION);
   const [address, setAddress]       = useState(initialAddress ?? '');
+  const [label, setLabel]           = useState(initialLabel ?? '');
   const [entrance, setEntrance]     = useState('');
   const [apartment, setApartment]   = useState('');
   const [floor, setFloor]           = useState('');
   const [geocoding, setGeocoding]   = useState(false);
   const [dragging, setDragging]     = useState(false);
   const [permDenied, setPermDenied] = useState(false);
+  const [collapsed, setCollapsed]   = useState(false);
   const [rawStreet, setRawStreet]   = useState('');
   const [rawHouse, setRawHouse]     = useState('');
+  const [city, setCity]             = useState('');
   const sheetBottom = useRef(new Animated.Value(0)).current;
+  const collapsedRef = useRef(collapsed);
+  useEffect(() => { collapsedRef.current = collapsed; }, [collapsed]);
+
+  // 1 = панель развёрнута, 0 = свёрнута — анимируется через JS (Animated),
+  // т.к. LayoutAnimation ненадёжен на Android с новой архитектурой RN
+  const expandAnim = useRef(new Animated.Value(1)).current;
+  const [contentHeight, setContentHeight] = useState<number | null>(null);
+
+  const toggleCollapsed = (next: boolean) => {
+    setCollapsed(next);
+    Animated.timing(expandAnim, {
+      toValue: next ? 0 : 1,
+      duration: 280,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const sheetPanResponder = useRef(
+    PanResponder.create({
+      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 12 && Math.abs(g.dy) > Math.abs(g.dx),
+      onPanResponderRelease: (_, g) => {
+        if (g.dy > 30 && !collapsedRef.current) toggleCollapsed(true);
+        else if (g.dy < -30 && collapsedRef.current) toggleCollapsed(false);
+      },
+    })
+  ).current;
 
   useEffect(() => {
     const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
@@ -99,8 +130,34 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
         const r = results[0];
         setRawStreet(r.street ?? '');
         setRawHouse(r.streetNumber ?? '');
+        setCity(r.city ?? '');
         const parts = [r.street, r.streetNumber, r.city].filter(Boolean);
         if (parts.length > 0) setAddress(parts.join(', '));
+      }
+    } catch {
+      // keep current address
+    } finally {
+      setGeocoding(false);
+    }
+  };
+
+  const forwardGeocode = async (query: string) => {
+    const trimmed = query.trim();
+    if (!trimmed) return;
+    // Привязываем поиск к текущему городу пользователя, чтобы не находило
+    // одноимённые улицы в других городах
+    const biased = city && !trimmed.toLowerCase().includes(city.toLowerCase())
+      ? `${trimmed}, ${city}`
+      : trimmed;
+    setGeocoding(true);
+    try {
+      const results = await Location.geocodeAsync(biased);
+      if (results.length > 0) {
+        const { latitude, longitude } = results[0];
+        const r: Region = { latitude, longitude, latitudeDelta: 0.008, longitudeDelta: 0.008 };
+        setRegion(r);
+        mapRef.current?.animateToRegion(r, 600);
+        reverseGeocode(latitude, longitude);
       }
     } catch {
       // keep current address
@@ -139,6 +196,7 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
       return i === -1 ? '' : trimmed.substring(i + 1);
     })();
 
+    const houseVal = house.trim() || rawHouse;
     const details = [
       entrance.trim()  ? `под. ${entrance.trim()}`  : '',
       floor.trim()     ? `этаж ${floor.trim()}`     : '',
@@ -149,11 +207,12 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
     onSave(
       {
         street,
-        house,
+        house: houseVal,
         apartment: apartment.trim() || undefined,
         entrance:  entrance.trim()  || undefined,
         floor:     floor.trim()     || undefined,
-      },
+        label:     label.trim()     || undefined,
+      } as any,
       display,
     );
   };
@@ -195,9 +254,45 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
 
       {/* Bottom sheet */}
       <Animated.View style={[styles.sheet, { bottom: sheetBottom }]}>
-        <View style={styles.handle} />
+        <View {...sheetPanResponder.panHandlers}>
+          <View style={styles.handle} />
 
-        <Text style={styles.sheetTitle}>Укажите адрес</Text>
+          {collapsed ? (
+            <Text style={styles.collapsedSummary} numberOfLines={1}>
+              {address.trim() || 'Укажите адрес'}
+            </Text>
+          ) : (
+            <Text style={styles.sheetTitle}>Укажите адрес</Text>
+          )}
+        </View>
+
+        <Animated.View
+          style={{
+            overflow: 'hidden',
+            opacity: expandAnim,
+            height: contentHeight === null
+              ? undefined
+              : expandAnim.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] }),
+          }}
+        >
+        <View
+          onLayout={(e) => {
+            const h = e.nativeEvent.layout.height;
+            if (!collapsedRef.current && h > 0 && h !== contentHeight) setContentHeight(h);
+          }}
+        >
+        {/* Название точки */}
+        <View style={styles.inputRow}>
+          <TextInput
+            style={styles.input}
+            value={label}
+            onChangeText={setLabel}
+            placeholder="Введите название адреса"
+            placeholderTextColor="rgba(255,255,255,0.3)"
+            returnKeyType="next"
+            selectionColor={GREEN}
+          />
+        </View>
 
         {/* Address input */}
         <View style={styles.inputRow}>
@@ -213,11 +308,19 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
             selectionColor={GREEN}
           />
           {geocoding && <ActivityIndicator size="small" color={GREEN} style={{ marginLeft: 8 }} />}
+          <TouchableOpacity
+            style={[styles.findInlineBtn, !address.trim() && styles.findBtnDisabled]}
+            onPress={() => { Keyboard.dismiss(); forwardGeocode(address); }}
+            activeOpacity={0.85}
+            disabled={!address.trim()}
+          >
+            <Text style={styles.findBtnTxt}>Найти</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Детали адреса */}
         <View style={styles.detailsRow}>
-          <View style={[styles.detailField, { flex: 1 }]}>
+          <View style={[styles.detailField, { flex: 1, minWidth: 0 }]}>
             <Text style={styles.detailLabel}>Подъезд</Text>
             <TextInput
               style={styles.detailInput}
@@ -230,7 +333,7 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
               selectionColor={GREEN}
             />
           </View>
-          <View style={[styles.detailField, { flex: 1 }]}>
+          <View style={[styles.detailField, { flex: 1, minWidth: 0 }]}>
             <Text style={styles.detailLabel}>Этаж</Text>
             <TextInput
               style={styles.detailInput}
@@ -243,7 +346,7 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
               selectionColor={GREEN}
             />
           </View>
-          <View style={[styles.detailField, { flex: 1.5 }]}>
+          <View style={[styles.detailField, { flex: 1, minWidth: 0 }]}>
             <Text style={styles.detailLabel}>Квартира</Text>
             <TextInput
               style={styles.detailInput}
@@ -252,8 +355,7 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
               placeholder="—"
               placeholderTextColor="rgba(255,255,255,0.25)"
               keyboardType="numeric"
-              returnKeyType="done"
-              onSubmitEditing={() => Keyboard.dismiss()}
+              returnKeyType="next"
               selectionColor={GREEN}
             />
           </View>
@@ -264,6 +366,8 @@ export default function AddressPickerScreen({ initialAddress, onSave, onBack }: 
             Разрешение на геолокацию не выдано — двигайте карту вручную.
           </Text>
         )}
+        </View>
+        </Animated.View>
 
         <TouchableOpacity
           style={[styles.saveBtn, !address.trim() && styles.saveBtnDisabled]}
@@ -313,14 +417,14 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: BORDER,
   },
   handle:     { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 18 },
-  sheetTitle: { color: '#fff', fontSize: 17, fontWeight: '700', marginBottom: 16 },
+  sheetTitle: { color: '#fff', fontSize: 17, fontWeight: '700', marginBottom: 16, textAlign: 'center' },
+  collapsedSummary: { color: 'rgba(255,255,255,0.6)', fontSize: 14, marginBottom: 16, textAlign: 'center' },
 
   inputRow: {
     flexDirection: 'row', alignItems: 'center',
     backgroundColor: CARD, borderRadius: 14,
-    borderWidth: 1, borderColor: BORDER,
     paddingHorizontal: 14, paddingVertical: 2,
-    marginBottom: 16,
+    marginBottom: 12,
   },
   input: { flex: 1, color: '#fff', fontSize: 15, paddingVertical: 14 },
 
@@ -329,21 +433,31 @@ const styles = StyleSheet.create({
   },
   detailField: {
     backgroundColor: CARD, borderRadius: 12,
-    borderWidth: 1, borderColor: BORDER,
     paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4,
+    alignItems: 'center',
   },
   detailLabel: {
     color: 'rgba(255,255,255,0.35)', fontSize: 10,
     fontWeight: '700', letterSpacing: 0.8, marginBottom: 2,
+    textAlign: 'center',
   },
   detailInput: {
     color: '#fff', fontSize: 15, paddingVertical: 6,
+    textAlign: 'center',
   },
 
   permNote: {
     color: 'rgba(255,255,255,0.4)', fontSize: 12,
     marginBottom: 12, lineHeight: 18,
   },
+
+  findInlineBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(141,187,0,0.12)', borderRadius: 20,
+    paddingHorizontal: 12, paddingVertical: 8, marginLeft: 8,
+  },
+  findBtnDisabled: { opacity: 0.4 },
+  findBtnTxt:      { color: GREEN, fontSize: 13, fontWeight: '700' },
 
   saveBtn:         { backgroundColor: '#8DBB00', borderRadius: 30, paddingVertical: 18, alignItems: 'center' },
   saveBtnDisabled: { opacity: 0.4 },

@@ -30,6 +30,7 @@ interface Props {
   subtotal: number;
   deliveryFeeAmount?: number | null;
   address?: string;
+  addressId?: string;
   onAddressPress?: () => void;
   onBack: () => void;
   onSuccess: (deliveryType: 'delivery' | 'pickup', payment: 'kaspi' | 'cash', orderId: string, bonusesSpent: number, deliveryFee: number, promoDiscount: number) => void;
@@ -43,7 +44,7 @@ interface Props {
   restaurantInfo?: RestaurantInfo | null;
 }
 
-export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, onAddressPress, onBack, onSuccess, authToken, phone, cartItems, initialBonuses = 0, promoCode, promoDiscount = 0, cashbackPercent, restaurantInfo }: Props) {
+export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, addressId, onAddressPress, onBack, onSuccess, authToken, phone, cartItems, initialBonuses = 0, promoCode, promoDiscount = 0, cashbackPercent, restaurantInfo }: Props) {
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
   const [timeType, setTimeType] = useState<'asap' | 'scheduled'>('asap');
   const [payment, setPayment] = useState<'kaspi' | 'cash'>('kaspi');
@@ -153,10 +154,14 @@ export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, o
 
   const handleSubmit = async () => {
     if (!authToken) return;
+    if (deliveryType === 'delivery' && !addressId) {
+      setSubmitError('Адрес ещё сохраняется — подождите секунду и попробуйте снова.');
+      return;
+    }
     setSubmitting(true);
     setSubmitError('');
     try {
-      const order = await createOrder(cartItems, deliveryType, payment, address ?? '', comment, authToken, phone, bonusesToSpend || undefined, promoCode, buildCompleteBefore());
+      const order = await createOrder(cartItems, deliveryType, payment, deliveryType === 'delivery' ? addressId : undefined, comment, authToken, phone, bonusesToSpend || undefined, promoCode, buildCompleteBefore());
       onSuccess(deliveryType, payment, order.orderId, bonusesToSpend, order.deliveryFee ?? deliveryFee, order.promoDiscount ?? promoDiscount);
     } catch (e: any) {
       if (e instanceof UnavailableItemsError) {

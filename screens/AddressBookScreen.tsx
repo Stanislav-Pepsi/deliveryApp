@@ -1,4 +1,4 @@
-﻿import { Ionicons } from '@expo/vector-icons';
+﻿import { AntDesign, Ionicons, Octicons } from '@expo/vector-icons';
 import {
   ScrollView,
   StatusBar,
@@ -18,14 +18,16 @@ const RED        = '#e05252';
 interface Props {
   addresses: string[];
   activeAddress: string;
+  labelMap?: Record<string, string>;
   onSelect: (address: string) => void;
   onDelete: (address: string) => void;
+  onEdit: (address: string) => void;
   onAddNew: () => void;
   onBack: () => void;
 }
 
 export default function AddressBookScreen({
-  addresses, activeAddress, onSelect, onDelete, onAddNew, onBack,
+  addresses, activeAddress, labelMap = {}, onSelect, onDelete, onEdit, onAddNew, onBack,
 }: Props) {
   return (
     <View style={styles.root}>
@@ -63,24 +65,28 @@ export default function AddressBookScreen({
                     {isActive && <View style={styles.radioInner} />}
                   </View>
 
-                  <View style={styles.addrIconBox}>
-                    <Ionicons
-                      name="location-outline"
-                      size={18}
-                      color={isActive ? GREEN : 'rgba(255,255,255,0.4)'}
-                    />
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.addrTxt, isActive && styles.addrTxtActive]} numberOfLines={1}>
+                      {labelMap[addr] || addr}
+                    </Text>
+                    {labelMap[addr] && (
+                      <Text style={styles.addrSub} numberOfLines={1}>{addr}</Text>
+                    )}
                   </View>
 
-                  <Text style={[styles.addrTxt, isActive && styles.addrTxtActive]} numberOfLines={2}>
-                    {addr}
-                  </Text>
-
+                  <TouchableOpacity
+                    style={styles.editBtn}
+                    onPress={() => onEdit(addr)}
+                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                  >
+                    <AntDesign name="edit" size={17} color="rgba(255,255,255,0.4)" />
+                  </TouchableOpacity>
                   <TouchableOpacity
                     style={styles.deleteBtn}
                     onPress={() => onDelete(addr)}
                     hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                   >
-                    <Ionicons name="trash-outline" size={17} color={RED} />
+                    <Octicons name="trash" size={17} color={RED} />
                   </TouchableOpacity>
                 </TouchableOpacity>
               );
@@ -132,18 +138,20 @@ const styles = StyleSheet.create({
   addrCardActive: { borderColor: GREEN, backgroundColor: 'rgba(141,187,0,0.07)' },
 
   radioOuter: {
-    width: 20, height: 20, borderRadius: 10,
+    width: 20, height: 20, borderRadius: 4,
     borderWidth: 2, borderColor: 'rgba(255,255,255,0.25)',
     alignItems: 'center', justifyContent: 'center',
   },
   radioOuterActive: { borderColor: GREEN },
-  radioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: GREEN },
+  radioInner: { width: 10, height: 10, borderRadius: 2, backgroundColor: GREEN },
 
   addrIconBox: { width: 32, height: 32, borderRadius: 8, backgroundColor: 'rgba(255,255,255,0.06)', alignItems: 'center', justifyContent: 'center' },
 
   addrTxt:       { flex: 1, color: 'rgba(255,255,255,0.65)', fontSize: 14, lineHeight: 20 },
   addrTxtActive: { color: '#fff', fontWeight: '600' },
+  addrSub:       { color: 'rgba(255,255,255,0.35)', fontSize: 12, marginTop: 2 },
 
+  editBtn:   { padding: 4, marginRight: 4 },
   deleteBtn: { padding: 4 },
 
   bottom: {

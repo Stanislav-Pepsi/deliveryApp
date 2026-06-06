@@ -149,7 +149,13 @@ export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }
     if (o.deliveryAddress) {
       try {
         const parsed = JSON.parse(o.deliveryAddress);
-        addressText = [parsed.streetName, parsed.house].filter(Boolean).join(', ');
+        const base = [parsed.streetName, parsed.house].filter(Boolean).join(', ');
+        const details = [
+          parsed.entrance ? `под. ${parsed.entrance}` : '',
+          parsed.floor    ? `этаж ${parsed.floor}`    : '',
+          parsed.flat     ? `кв. ${parsed.flat}`      : '',
+        ].filter(Boolean).join(', ');
+        addressText = details ? `${base}, ${details}` : base;
       } catch {
         addressText = o.deliveryAddress;
       }
@@ -166,11 +172,19 @@ export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }
       payment: o.paymentType === 'SCASH' ? 'cash' : 'kaspi',
       address: addressText,
       createdAt: o.createdAt,
-      orderItems: (o.items ?? []).map(i => ({
-        name: dishes.find(d => d.id === i.productId)?.name || (i as any).name || 'Позиция',
-        qty: i.amount,
-        total: i.price * i.amount,
-      })),
+      orderItems: (o.items ?? []).map(i => {
+        const dish = dishes.find(d => d.id === i.productId);
+        const size = dish?.sizes.find(s => s.sizeId === i.sizeId);
+        const allModifiers = (size ?? dish?.sizes.find(s => s.isDefault) ?? dish?.sizes[0])?.modifierGroups.flatMap(g => g.modifiers) ?? [];
+        const sizeName = (dish && dish.sizes.length > 1) ? (size?.sizeName || i.sizeName) : undefined;
+        const extraNames = (i.modifiers ?? []).map(m => allModifiers.find(mod => mod.id === m.productId)?.name || m.name).filter(Boolean);
+        return {
+          name: dish?.name || i.name || 'Позиция',
+          meta: [sizeName, ...extraNames].filter(Boolean).join(' · ') || undefined,
+          qty: i.amount,
+          total: i.price * i.amount,
+        };
+      }),
     };
     const itemCount = o.items?.length ?? 0;
     const orderNum = o.iikoNumber != null ? `Заказ #${o.iikoNumber}` : 'Заказ #...';

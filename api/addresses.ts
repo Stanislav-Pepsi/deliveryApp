@@ -58,6 +58,24 @@ export async function addAddress(input: AddressInput, token: string): Promise<Ap
   return data;
 }
 
+export async function updateAddress(id: string, input: AddressInput, token: string): Promise<ApiAddress> {
+  const res = await fetch(`${BASE_URL}/addresses/${id}`, {
+    method: 'PATCH',
+    headers: baseHeaders(token),
+    body: JSON.stringify({
+      label:     input.label     ?? null,
+      street:    input.street,
+      house:     input.house,
+      apartment: input.apartment ?? null,
+      entrance:  input.entrance  ?? null,
+      floor:     input.floor     ?? null,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'Ошибка обновления адреса');
+  return data;
+}
+
 export async function deleteAddress(id: string, token: string): Promise<void> {
   const res = await fetch(`${BASE_URL}/addresses/${id}`, {
     method: 'DELETE',

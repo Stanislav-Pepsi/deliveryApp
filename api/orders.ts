@@ -21,23 +21,25 @@ export interface ApiOrder {
   promoDiscount: string | null;
   bonusesSpent: string | null;
   bonusesEarned: string | null;
-  items: { productId: string; name?: string; amount: number; price: number; sizeId?: string }[];
+  items: {
+    productId: string;
+    name?: string;
+    amount: number;
+    price: number;
+    sizeId?: string;
+    sizeName?: string;
+    modifiers?: { productId: string; name?: string; amount: number; price: number; productGroupId?: string | null }[];
+  }[];
   deliveryAddress: string | null;
   createdAt: string;
   updatedAt: string;
-}
-
-function splitAddress(address: string): { streetName: string; house: string } {
-  const i = address.lastIndexOf(' ');
-  if (i === -1) return { streetName: address, house: '' };
-  return { streetName: address.substring(0, i), house: address.substring(i + 1) };
 }
 
 export async function createOrder(
   items: CartItem[],
   deliveryType: 'delivery' | 'pickup',
   payment: 'kaspi' | 'cash',
-  address: string,
+  addressId: string | undefined,
   comment: string,
   token: string,
   phone: string,
@@ -65,13 +67,20 @@ export async function createOrder(
     }),
   };
 
-  if (deliveryType === 'delivery' && address) {
-    body.deliveryAddress = splitAddress(address);
+  // Бэкенд сам подтянет адрес из адресной книги по addressId — это сохраняет
+  // все поля (квартира/подъезд/этаж/комментарий), в отличие от разбора строки
+  if (deliveryType === 'delivery' && addressId) {
+    body.addressId = addressId;
   }
 
   if (comment) body.comment = comment;
-  if (bonusesToSpend && bonusesToSpend > 0) body.bonusesToSpend = bonusesToSpend;
-  if (promoCode) body.promoCode = promoCode;
+  // promoCode и bonusesToSpend взаимоисключающие на бэкенде (вернёт 400) —
+  // промокод выбран пользователем явно, поэтому он в приоритете
+  if (promoCode) {
+    body.promoCode = promoCode;
+  } else if (bonusesToSpend && bonusesToSpend > 0) {
+    body.bonusesToSpend = bonusesToSpend;
+  }
   if (completeBefore) body.completeBefore = completeBefore;
 
   const res = await fetch(`${BASE_URL}/orders`, {

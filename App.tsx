@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { useFonts } from 'expo-font';
-import { addAddress, addressDisplay, deleteAddress, fetchAddresses } from './api/addresses';
+import { addAddress, addressDisplay, deleteAddress, fetchAddresses, updateAddress } from './api/addresses';
 
 const ADDR_KEY = 'basilic_addresses';
 import { fetchLoyaltyBalance } from './api/loyalty';
@@ -142,8 +142,10 @@ export default function App() {
   const [addresses, setAddresses]         = useState<string[]>([]);
   const [activeAddress, setActiveAddress] = useState('');
   const [addrReturn, setAddrReturn]       = useState<Screen>('addressBook');
+  const [editingAddrDisplay, setEditingAddrDisplay] = useState<string | null>(null);
   const [authToken, setAuthToken]         = useState<string | null>(null);
   const [addressIdMap, setAddressIdMap]   = useState<Record<string, string>>({});
+  const [addressLabelMap, setAddressLabelMap] = useState<Record<string, string>>({});
   const [userPhone, setUserPhone]         = useState('');
   const [dishes, setDishes]               = useState<DishData[]>([]);
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
@@ -283,6 +285,7 @@ export default function App() {
       <AddressBookScreen
         addresses={addresses}
         activeAddress={activeAddress}
+        labelMap={addressLabelMap}
         onSelect={(addr) => { setActiveAddress(addr); setScreen('addressBook'); }}
         onDelete={(addr) => {
           const id = addressIdMap[addr];
@@ -291,26 +294,43 @@ export default function App() {
           setAddressIdMap(prev => { const n = { ...prev }; delete n[addr]; return n; });
           if (activeAddress === addr) setActiveAddress('');
         }}
-        onAddNew={() => { setAddrReturn('addressBook'); setScreen('addressPicker'); }}
+        onEdit={(addr) => { setEditingAddrDisplay(addr); setAddrReturn('addressBook'); setScreen('addressPicker'); }}
+        onAddNew={() => { setEditingAddrDisplay(null); setAddrReturn('addressBook'); setScreen('addressPicker'); }}
         onBack={() => setScreen('profile')}
       />
     );
   }
   if (screen === 'addressPicker') {
+    const editId = editingAddrDisplay ? addressIdMap[editingAddrDisplay] : null;
     return (
       <AddressPickerScreen
-        initialAddress=""
+        initialAddress={editingAddrDisplay ?? ''}
+        initialLabel={editingAddrDisplay ? addressLabelMap[editingAddrDisplay] : undefined}
         onSave={(input, display) => {
           if (authToken) {
-            addAddress(input, authToken).then(saved => {
-              setAddressIdMap(prev => ({ ...prev, [display]: saved.id }));
-            }).catch(() => {});
+            if (editId) {
+              updateAddress(editId, input, authToken).then(saved => {
+                const newLabel = saved.label ?? undefined;
+                setAddresses(prev => prev.map(a => a === editingAddrDisplay ? display : a));
+                setAddressIdMap(prev => { const n = { ...prev }; delete n[editingAddrDisplay!]; n[display] = saved.id; return n; });
+                setAddressLabelMap(prev => { const n = { ...prev }; delete n[editingAddrDisplay!]; if (newLabel) n[display] = newLabel; return n; });
+                if (activeAddress === editingAddrDisplay) setActiveAddress(display);
+              }).catch(() => {});
+            } else {
+              addAddress(input, authToken).then(saved => {
+                setAddressIdMap(prev => ({ ...prev, [display]: saved.id }));
+                if (saved.label) setAddressLabelMap(prev => ({ ...prev, [display]: saved.label! }));
+              }).catch(() => {});
+            }
           }
-          setAddresses(prev => prev.includes(display) ? prev : [...prev, display]);
-          setActiveAddress(display);
+          if (!editId) {
+            setAddresses(prev => prev.includes(display) ? prev : [...prev, display]);
+            setActiveAddress(display);
+          }
+          setEditingAddrDisplay(null);
           setScreen(addrReturn);
         }}
-        onBack={() => setScreen(addrReturn)}
+        onBack={() => { setEditingAddrDisplay(null); setScreen(addrReturn); }}
       />
     );
   }
@@ -321,6 +341,7 @@ export default function App() {
         subtotal={subtotal}
         deliveryFeeAmount={restaurantInfo?.deliveryFeeAmount}
         address={activeAddress}
+        addressId={addressIdMap[activeAddress]}
         authToken={authToken}
         phone={userPhone}
         cartItems={cart}
@@ -578,9 +599,14 @@ export default function App() {
     fetchAddresses(token).then(addrs => {
       const texts = addrs.map(a => addressDisplay(a));
       const map: Record<string, string> = {};
-      addrs.forEach(a => { map[addressDisplay(a)] = a.id; });
+      const labelMap: Record<string, string> = {};
+      addrs.forEach(a => {
+        map[addressDisplay(a)] = a.id;
+        if (a.label) labelMap[addressDisplay(a)] = a.label;
+      });
       setAddresses(texts);
       setAddressIdMap(map);
+      setAddressLabelMap(labelMap);
       if (texts.length > 0) setActiveAddress(texts[0]);
     }).catch(() => {});
     fetchRestaurantInfo(token).then(setRestaurantInfo).catch(() => {});

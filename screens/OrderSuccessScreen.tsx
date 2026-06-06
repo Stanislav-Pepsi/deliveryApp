@@ -54,11 +54,11 @@ const STATUS_TITLE: Record<string, string> = {
 
 const STATUS_DESC: Record<string, string> = {
   CREATED:     'Мы скоро перезвоним вам, чтобы уточнить детали заказа',
-  IN_PROGRESS: 'Повар колдует над вашими блюдами, аромат уже витает в воздухе..',
+  IN_PROGRESS: 'Ваш заказ уже готовится на кухне — совсем скоро будет готов',
   READY:       'Последние штрихи — ваш заказ почти готов..',
   ON_WAY:      'Курьер уже мчится к вам, осталось совсем немного',
   DELIVERED:   'Ваш заказ доставлен — приятного аппетита!',
-  CANCELLED:   'К сожалению, заказ был отменён. Свяжитесь с рестораном для уточнения деталей.',
+  CANCELLED:   'Этот заказ отменён. Если у вас остались вопросы — свяжитесь с рестораном.',
 };
 
 
@@ -232,8 +232,12 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
   }, [orderId, authToken, currentIikoNumber, currentStatus]);
 
   const deductions = (bonusesSpent ?? 0) + (promoDiscount ?? 0);
-  const netTotal = Math.max(0, total - deductions);
   const isDelivery = deliveryType === 'delivery';
+  const itemsSum = (orderItems ?? []).reduce((s, i) => s + i.total, 0);
+  const grandTotal = (orderItems && orderItems.length > 0)
+    ? itemsSum + (isDelivery && deliveryFee ? deliveryFee : 0)
+    : total;
+  const netTotal = Math.max(0, grandTotal - deductions);
   const steps = isDelivery ? STEPS_DELIVERY : STEPS_PICKUP;
   const icons = isDelivery ? ICONS_DELIVERY : ICONS_PICKUP;
   const effectiveAnimStatus = (!isDelivery && currentStatus === 'READY') ? 'READY_PICKUP' : currentStatus;
@@ -265,7 +269,13 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
         {/* Checkmark / View header */}
         {isViewMode ? (
           <View style={{ alignItems: 'center' }}>
-            <AnimatedStatusIcon status={effectiveAnimStatus} />
+            {isCancelled ? (
+              <View style={[styles.checkCircle, styles.checkCircleCancelled, { marginTop: 52 }]}>
+                <Ionicons name="close" size={40} color="#fff" />
+              </View>
+            ) : (
+              <AnimatedStatusIcon status={effectiveAnimStatus} />
+            )}
             <Text style={styles.viewTitle}>{currentTitle}</Text>
             <Text style={styles.viewDesc}>{currentDesc}</Text>
           </View>
@@ -284,7 +294,7 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
               </Text>
               <Text style={styles.subtitle}>
                 {isCancelled
-                  ? 'Свяжитесь с рестораном\nдля уточнения деталей.'
+                  ? 'Если у вас остались вопросы —\nсвяжитесь с рестораном.'
                   : isDelivery
                     ? 'Скоро курьер заберёт ваш\nзаказ из кафе.'
                     : 'Приходите забрать заказ\nкогда он будет готов.'}
@@ -353,7 +363,7 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
             />
             <View style={{ flex: 1, marginLeft: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
               <View>
-                <Text style={styles.cardLabel}>ОПЛАЧЕНО</Text>
+                <Text style={styles.cardLabel}>К ОПЛАТЕ</Text>
                 <Text style={styles.infoVal}>
                   {netTotal.toLocaleString('ru-RU')} ₸ · {payment === 'kaspi' ? 'Картой' : 'Наличными'}
                 </Text>
@@ -396,8 +406,6 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
               </View>
             )}
             {(() => {
-              const itemsSum = (orderItems ?? []).reduce((s, i) => s + i.total, 0);
-              const grandTotal = itemsSum + (isDelivery && deliveryFee ? deliveryFee : 0);
               const hasDeductions = deductions > 0;
               return (
                 <>

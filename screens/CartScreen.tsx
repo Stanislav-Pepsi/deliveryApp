@@ -15,6 +15,7 @@ import {
 import Text from '../components/Text';
 import { CartItem, DishData } from '../App';
 import { validatePromo, calcDiscount, promoLabel, PromoResult } from '../api/promos';
+import { RestaurantInfo } from '../api/restaurant';
 
 const GREEN = '#8DBB00';
 const BG = '#0c0f0a';
@@ -29,9 +30,10 @@ interface Props {
   loyaltyBalance?: number | null;
   deliveryFeeAmount?: number | null;
   authToken?: string | null;
+  restaurantInfo?: RestaurantInfo | null;
 }
 
-export default function CartScreen({ items, dishes, onUpdateQty, onBack, onCheckout, loyaltyBalance, deliveryFeeAmount, authToken }: Props) {
+export default function CartScreen({ items, dishes, onUpdateQty, onBack, onCheckout, loyaltyBalance, deliveryFeeAmount, authToken, restaurantInfo }: Props) {
   const [promo, setPromo] = useState('');
   const [promoResult, setPromoResult] = useState<PromoResult | null>(null);
   const [promoError, setPromoError] = useState('');
@@ -305,9 +307,27 @@ export default function CartScreen({ items, dishes, onUpdateQty, onBack, onCheck
             {hasUnavailable && (
               <Text style={styles.unavailableWarning}>Уберите недоступные позиции перед оформлением</Text>
             )}
-            <TouchableOpacity style={[styles.checkoutBtn, hasUnavailable && { opacity: 0.4 }]} activeOpacity={0.85} onPress={() => { if (!hasUnavailable) onCheckout(bonusesToSpend, promoResult?.code, promoDiscount || undefined); }} disabled={hasUnavailable}>
-              <Text style={styles.checkoutTxt}>Оформить заказ</Text>
-            </TouchableOpacity>
+            {restaurantInfo?.isTemporarilyClosed && (
+              <View style={styles.closedWarning}>
+                <Ionicons name="time-outline" size={15} color="#e05252" style={{ marginRight: 6, flexShrink: 0 }} />
+                <Text style={styles.closedWarningTxt}>
+                  Ресторан временно не принимает заказы. Бронирование столиков доступно.
+                </Text>
+              </View>
+            )}
+            {(() => {
+              const blocked = hasUnavailable || !!restaurantInfo?.isTemporarilyClosed;
+              return (
+                <TouchableOpacity
+                  style={[styles.checkoutBtn, blocked && { opacity: 0.4 }]}
+                  activeOpacity={0.85}
+                  onPress={() => { if (!blocked) onCheckout(bonusesToSpend, promoResult?.code, promoDiscount || undefined); }}
+                  disabled={blocked}
+                >
+                  <Text style={styles.checkoutTxt}>Оформить заказ</Text>
+                </TouchableOpacity>
+              );
+            })()}
           </View>
         </View>
       )}
@@ -369,6 +389,16 @@ const styles = StyleSheet.create({
   itemCardUnavailable: { borderWidth: 1, borderColor: 'rgba(224,82,82,0.3)', backgroundColor: 'rgba(224,82,82,0.04)' },
   itemUnavailableTxt: { color: '#e05252', fontSize: 12, fontWeight: '600', marginBottom: 4 },
   unavailableWarning: { color: '#e05252', fontSize: 12, fontWeight: '600', textAlign: 'center', marginBottom: 4 },
+  closedWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(224,82,82,0.1)',
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 4,
+  },
+  closedWarningTxt: { color: '#e05252', fontSize: 12, fontWeight: '500', flex: 1, lineHeight: 17 },
 
   qtyRow: {
     flexDirection: 'row',

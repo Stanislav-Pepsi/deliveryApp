@@ -1,13 +1,13 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useEffect, useState } from 'react';
-import { Image, StyleSheet, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, Image, StyleSheet, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { addAddress, addressDisplay, deleteAddress, fetchAddresses, updateAddress } from './api/addresses';
 
 const ADDR_KEY  = 'starten_addresses';
 const AUTH_KEY  = 'starten_auth';
 import { fetchLoyaltyBalance } from './api/loyalty';
-import { RestaurantInfo, fetchRestaurantInfo } from './api/restaurant';
+import { RestaurantInfo, fetchRestaurantInfo, isOpenNow, getMsUntilClose } from './api/restaurant';
 import { fetchOrderById, ApiOrder } from './api/orders';
 import AddressBookScreen from './screens/AddressBookScreen';
 import AddressPickerScreen from './screens/AddressPickerScreen';
@@ -154,6 +154,7 @@ export default function App() {
   const [userPhone, setUserPhone]         = useState('');
   const [dishes, setDishes]               = useState<DishData[]>([]);
   const [restaurantInfo, setRestaurantInfo] = useState<RestaurantInfo | null>(null);
+  const [isOpen, setIsOpen] = useState(true);
   const [loyaltyBalance, setLoyaltyBalance] = useState<number | null>(null);
   const [favorites, setFavorites]         = useState<Set<string>>(new Set());
 
@@ -226,6 +227,48 @@ export default function App() {
     if (!authToken) return;
     refreshBalance(authToken);
   }, [authToken]);
+
+  // Recompute isOpen and arm a close-timer whenever restaurantInfo changes
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    const open = isOpenNow(restaurantInfo?.workingHours, restaurantInfo?.timezone);
+    setIsOpen(open);
+    if (open) {
+      const ms = getMsUntilClose(restaurantInfo?.workingHours, restaurantInfo?.timezone);
+      if (ms > 0) {
+        closeTimerRef.current = setTimeout(() => setIsOpen(false), ms);
+      }
+    }
+    return () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current); };
+  }, [restaurantInfo]);
+
+  // Poll isTemporarilyClosed every 2 minutes
+  useEffect(() => {
+    if (!authToken) return;
+    const interval = setInterval(() => {
+      fetchRestaurantInfo(authToken).then(setRestaurantInfo).catch(() => {});
+    }, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [authToken]);
+
+  // Refetch when app returns to foreground
+  useEffect(() => {
+    if (!authToken) return;
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        fetchRestaurantInfo(authToken).then(setRestaurantInfo).catch(() => {});
+      }
+    });
+    return () => sub.remove();
+  }, [authToken]);
+
+  // Refetch restaurant info when entering cart screen
+  useEffect(() => {
+    if (screen === 'cart' && authToken) {
+      fetchRestaurantInfo(authToken).then(setRestaurantInfo).catch(() => {});
+    }
+  }, [screen]);
 
   const handleNotifNavigate = (data: NotifData) => {
     switch (data.type) {
@@ -471,6 +514,7 @@ export default function App() {
         loyaltyBalance={loyaltyBalance}
         deliveryFeeAmount={restaurantInfo?.deliveryFeeAmount}
         authToken={authToken}
+        restaurantInfo={restaurantInfo}
       />
     );
   }
@@ -681,6 +725,7 @@ export default function App() {
           authToken={authToken}
           onDishesLoaded={setDishes}
           restaurantInfo={restaurantInfo}
+          isOpen={isOpen}
           favorites={favorites}
           onToggleFavorite={toggleFavorite}
         />

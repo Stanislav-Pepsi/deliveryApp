@@ -69,7 +69,7 @@ const NAV = [
 ];
 
 import { DishData } from '../App';
-import { RestaurantInfo } from '../api/restaurant';
+import { RestaurantInfo, getNextOpenTime } from '../api/restaurant';
 
 interface Props {
   onDishPress: (dish: DishData) => void;
@@ -83,11 +83,12 @@ interface Props {
   authToken?: string | null;
   onDishesLoaded?: (dishes: DishData[]) => void;
   restaurantInfo?: RestaurantInfo | null;
+  isOpen?: boolean;
   favorites?: Set<string>;
   onToggleFavorite?: (id: string) => void;
 }
 
-export default function HomeScreen({ onDishPress, onCartPress, onReservationPress, onProfilePress, onOrderPress, onAddressPress, cartCount, address, authToken, onDishesLoaded, restaurantInfo, favorites: favProp, onToggleFavorite: toggleFavProp }: Props) {
+export default function HomeScreen({ onDishPress, onCartPress, onReservationPress, onProfilePress, onOrderPress, onAddressPress, cartCount, address, authToken, onDishesLoaded, restaurantInfo, isOpen, favorites: favProp, onToggleFavorite: toggleFavProp }: Props) {
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeCat, setActiveCat] = useState('all');
@@ -248,6 +249,24 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
             <Ionicons name="search-outline" size={20} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
+
+        {/* Temporarily closed banner */}
+        {(isOpen === false || !!restaurantInfo?.isTemporarilyClosed) && (
+          <View style={styles.closedBanner}>
+            <Ionicons name="time-outline" size={18} color="#fff" style={{ marginRight: 10, flexShrink: 0 }} />
+            <View style={{ flex: 1 }}>
+              <Text style={styles.closedBannerTxt}>
+                Ресторан сейчас не принимает заказы. Бронирование столиков доступно.
+              </Text>
+              {(() => {
+                const nextOpen = getNextOpenTime(restaurantInfo?.workingHours, restaurantInfo?.timezone);
+                return nextOpen ? (
+                  <Text style={styles.closedBannerSub}>Откроется в {nextOpen}</Text>
+                ) : null;
+              })()}
+            </View>
+          </View>
+        )}
 
         {/* Active orders */}
         {activeOrders.map(o => {
@@ -868,6 +887,30 @@ const styles = StyleSheet.create({
     borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4,
   },
   sheetUnavailableTxt: { color: '#e05252', fontSize: 11, fontWeight: '700' },
+
+  closedBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: 20,
+    marginBottom: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 14,
+    backgroundColor: 'rgba(232,36,46,0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(232,36,46,0.35)',
+  },
+  closedBannerTxt: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '500',
+    lineHeight: 18,
+  },
+  closedBannerSub: {
+    color: 'rgba(255,255,255,0.6)',
+    fontSize: 12,
+    marginTop: 3,
+  },
 
   announcBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
   announcSheet: {

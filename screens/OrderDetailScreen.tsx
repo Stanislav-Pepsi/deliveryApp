@@ -6,10 +6,10 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
-  Text,
   TouchableOpacity,
   View,
 } from 'react-native';
+import Text from '../components/Text';
 
 const GREEN      = '#8DBB00';
 const GREEN_DARK = '#4a6600';
@@ -135,7 +135,9 @@ export default function OrderDetailScreen({ order, onBack }: Props) {
               КАК МОЖНО СКОРЕЕ
             </Text>
             {order.time === 'asap' ? (
-              <Animated.Text style={[styles.timeCardMain, { opacity: blinkAnim }]}>~35 мин</Animated.Text>
+              <Animated.View style={{ opacity: blinkAnim }}>
+                <Text style={styles.timeCardMain}>~35 мин</Text>
+              </Animated.View>
             ) : (
               <Text style={styles.timeCardMain}>~35 мин</Text>
             )}
@@ -309,6 +311,6 @@ const styles = StyleSheet.create({
   totalRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   totalLabel:    { color: 'rgba(255,255,255,0.5)', fontSize: 13 },
   totalVal:      { color: '#fff', fontSize: 17, fontWeight: '800' },
-  backBtnBottom: { backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 18, alignItems: 'center', borderWidth: 1, borderColor: GREEN },
+  backBtnBottom: { backgroundColor: GREEN, borderRadius: 30, paddingVertical: 18, alignItems: 'center' },
   backBtnTxt:    { color: '#fff', fontSize: 17, fontWeight: '700' },
 });

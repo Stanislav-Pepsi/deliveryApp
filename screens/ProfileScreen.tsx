@@ -97,18 +97,19 @@ export default function ProfileScreen({
         </View>
 
         {/* Loyalty balance card */}
-        {loyaltyBalance !== null && (
-          <TouchableOpacity style={styles.loyaltyCard} onPress={onLoyaltyPress} activeOpacity={0.8}>
-            <View style={styles.loyaltyLeft}>
-              <Ionicons name="star" size={22} color={GREEN} />
-              <View style={{ marginLeft: 12 }}>
-                <Text style={styles.loyaltyLabel}>Ваши бонусы</Text>
-                <Text style={styles.loyaltyVal}>{String(loyaltyBalance)} бонусов</Text>
-              </View>
+        <TouchableOpacity style={styles.loyaltyCard} onPress={onLoyaltyPress} activeOpacity={0.8}>
+          <View style={styles.loyaltyLeft}>
+            <Ionicons name="star" size={22} color={GREEN} />
+            <View style={{ marginLeft: 12 }}>
+              <Text style={styles.loyaltyLabel}>Ваши бонусы</Text>
+              {loyaltyBalance !== null
+                ? <Text style={styles.loyaltyVal}>{String(loyaltyBalance)} бонусов</Text>
+                : <Text style={[styles.loyaltyVal, { color: 'rgba(255,255,255,0.2)' }]}>— бонусов</Text>
+              }
             </View>
-            <Ionicons name="chevron-forward" size={17} color="rgba(255,255,255,0.2)" />
-          </TouchableOpacity>
-        )}
+          </View>
+          <Ionicons name="chevron-forward" size={17} color="rgba(255,255,255,0.2)" />
+        </TouchableOpacity>
 
         {/* Menu */}
         <View style={styles.menuCard}>
@@ -278,6 +279,6 @@ const styles = StyleSheet.create({
   handle:    { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 20 },
   editTitle: { color: '#fff', fontSize: 17, fontWeight: '700', textAlign: 'center', marginBottom: 20 },
   editInput: { backgroundColor: CARD, borderRadius: 14, borderWidth: 1, borderColor: BORDER, padding: 16, color: '#fff', fontSize: 17, fontWeight: '500', marginBottom: 16 },
-  saveBtn:    { backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 17, alignItems: 'center', borderWidth: 1, borderColor: GREEN },
+  saveBtn:    { backgroundColor: GREEN, borderRadius: 30, paddingVertical: 17, alignItems: 'center' },
   saveBtnTxt: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

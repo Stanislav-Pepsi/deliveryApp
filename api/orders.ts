@@ -100,6 +100,16 @@ export async function createOrder(
   return data;
 }
 
+export async function cancelOrder(orderId: string, token: string): Promise<{ orderId: string; status: string; message: string }> {
+  const res = await fetch(`${BASE_URL}/orders/${orderId}/cancel`, {
+    method: 'POST',
+    headers: baseHeaders(token),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.message || 'Не удалось отменить заказ');
+  return data;
+}
+
 export async function fetchOrderById(orderId: string, token: string): Promise<ApiOrder> {
   const res = await fetch(`${BASE_URL}/orders/${orderId}`, {
     headers: baseHeaders(token),

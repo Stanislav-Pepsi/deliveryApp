@@ -58,15 +58,6 @@ export default function FavoritesScreen({ dishes, favorites, onDishPress, onTogg
                       ? <Image source={d.img} style={styles.dishImg} resizeMode="cover" />
                       : <View style={[styles.dishImg, { backgroundColor: 'rgba(255,255,255,0.04)' }]} />
                     }
-                    {(d.tags ?? []).length > 0 && (
-                      <View style={styles.tagRow}>
-                        {(d.tags ?? []).slice(0, 2).map(tag => (
-                          tag.imageUrl
-                            ? <Image key={tag.key} source={{ uri: tag.imageUrl }} style={styles.tagImg} />
-                            : <View key={tag.key} style={styles.tagBadge}><Text style={styles.tagTxt}>{tag.label}</Text></View>
-                        ))}
-                      </View>
-                    )}
                     <TouchableOpacity
                       style={styles.heartBtn}
                       onPress={() => onToggleFavorite(d.id)}
@@ -123,10 +114,6 @@ const styles = StyleSheet.create({
     backgroundColor: CARD,
   },
   dishImg: { width: '100%', height: 130 },
-  tagRow:   { position: 'absolute', top: 8, left: 8, flexDirection: 'row', gap: 4 },
-  tagImg:   { width: 28, height: 28, borderRadius: 6 },
-  tagBadge: { backgroundColor: 'rgba(0,0,0,0.55)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 3 },
-  tagTxt:   { color: '#fff', fontSize: 10, fontWeight: '700' },
   heartBtn: {
     position: 'absolute', top: 8, right: 8,
     width: 38, height: 38, borderRadius: 19,

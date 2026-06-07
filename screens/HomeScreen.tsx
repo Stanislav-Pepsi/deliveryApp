@@ -7,6 +7,7 @@ import {
   Dimensions,
   Image,
   Keyboard,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -30,12 +31,6 @@ const TAG_COLORS: Record<string, string> = {
   tag_spicy: '#E8242E',
 };
 
-const PROMOS = [
-  { id: '1', tag: 'ПОПРОБУЙТЕ НОВОЕ', title: 'Сет «Базилик»', sub: '–15% до 31 марта', blob: 'rgba(200,30,30,0.4)', img: null },
-  { id: '2', tag: 'ЗАВТРАКИ', title: 'Кофе на своё', sub: 'Каждый день с 8:00', blob: 'rgba(140,20,20,0.35)', img: null },
-  { id: '3', tag: '', title: '', sub: '', blob: 'transparent', img: require('../assets/promo_350x160.jpg') },
-];
-const PROMO_DATA = [...PROMOS, PROMOS[0]];
 
 const ACTIVE_STATUSES = new Set(['CREATED', 'IN_PROGRESS', 'READY', 'ON_WAY']);
 const STATUS_STEP: Record<string, number> = {
@@ -60,6 +55,7 @@ const ICONS_PICKUP: StepIcon[] = [
 
 import { fetchMenu } from '../api/menu';
 import { ApiOrder, fetchOrders } from '../api/orders';
+import { Announcement, fetchAnnouncements } from '../api/announcements';
 import { io } from 'socket.io-client';
 
 const WS_URL = 'https://nonvirulently-nonpursuant-georgie.ngrok-free.dev';
@@ -97,6 +93,9 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
   const [activeCat, setActiveCat] = useState('all');
   const [activeNav, setActiveNav] = useState('home');
   const [promoIdx, setPromoIdx] = useState(0);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState<Announcement | null>(null);
+  const [announcImgHeight, setAnnouncImgHeight] = useState(220);
   const promoRef = useRef<ScrollView>(null);
   const scrollPos = useRef(0);
   const { height: SCREEN_H } = Dimensions.get('window');
@@ -119,12 +118,24 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
   };
 
   useEffect(() => {
+    fetchAnnouncements().then(r => setAnnouncements(r.data)).catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    if (!selectedAnnouncement?.imageUrl) return;
+    Image.getSize(selectedAnnouncement.imageUrl, (w, h) => {
+      setAnnouncImgHeight(Math.round((W - 40) * h / w));
+    }, () => {});
+  }, [selectedAnnouncement?.imageUrl]);
+
+  useEffect(() => {
+    if (announcements.length < 2) return;
     const interval = setInterval(() => {
       const next = scrollPos.current + 1;
       promoRef.current?.scrollTo({ x: next * PROMO_STEP, animated: true });
       scrollPos.current = next;
-      setPromoIdx(next % PROMOS.length);
-      if (next >= PROMOS.length) {
+      setPromoIdx(next % announcements.length);
+      if (next >= announcements.length) {
         setTimeout(() => {
           promoRef.current?.scrollTo({ x: 0, animated: false });
           scrollPos.current = 0;
@@ -132,7 +143,7 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
       }
     }, 7000);
     return () => clearInterval(interval);
-  }, []);
+  }, [announcements.length]);
 
   const [dishes, setDishes] = useState<DishData[]>([]);
   const [dishLoading, setDishLoading] = useState(true);
@@ -300,46 +311,50 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
         })}
 
         {/* Promo carousel */}
-        <ScrollView
-          ref={promoRef}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.promoContent}
-          onMomentumScrollEnd={(e) => {
-            const rawIdx = Math.round(e.nativeEvent.contentOffset.x / PROMO_STEP);
-            scrollPos.current = rawIdx;
-            setPromoIdx(rawIdx % PROMOS.length);
-            if (rawIdx >= PROMOS.length) {
-              setTimeout(() => {
-                promoRef.current?.scrollTo({ x: 0, animated: false });
-                scrollPos.current = 0;
-              }, 350);
-            }
-          }}
-        >
-          {PROMO_DATA.map((p, idx) => (
-            <View key={idx} style={styles.promoCard}>
-              {p.img
-                ? <Image source={p.img} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
-                : (
-                  <>
-                    <View style={[styles.promoBlob, { backgroundColor: p.blob }]} />
-                    <Text style={styles.promoTag}>{p.tag}</Text>
-                    <Text style={styles.promoTitle}>{p.title}</Text>
-                    <Text style={styles.promoSub}>{p.sub}</Text>
-                  </>
-                )
-              }
-            </View>
-          ))}
-        </ScrollView>
+        {announcements.length > 0 && (
+          <>
+            <ScrollView
+              ref={promoRef}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.promoContent}
+              style={{ marginBottom: 12 }}
+              onMomentumScrollEnd={(e) => {
+                const rawIdx = Math.round(e.nativeEvent.contentOffset.x / PROMO_STEP);
+                scrollPos.current = rawIdx;
+                setPromoIdx(rawIdx % announcements.length);
+                if (rawIdx >= announcements.length) {
+                  setTimeout(() => {
+                    promoRef.current?.scrollTo({ x: 0, animated: false });
+                    scrollPos.current = 0;
+                  }, 350);
+                }
+              }}
+            >
+              {(announcements.length > 1 ? [...announcements, announcements[0]] : announcements).map((a, idx) => (
+                <TouchableOpacity
+                  key={idx}
+                  activeOpacity={0.88}
+                  style={styles.promoCard}
+                  onPress={() => setSelectedAnnouncement(a)}
+                >
+                  {a.imageUrl
+                    ? <Image source={{ uri: a.imageUrl }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
+                    : <View style={[StyleSheet.absoluteFillObject, { backgroundColor: 'rgba(255,255,255,0.04)' }]} />
+                  }
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
-        {/* Promo dots */}
-        <View style={styles.promoDots}>
-          {PROMOS.map((_, i) => (
-            <View key={i} style={[styles.promoDot, i === promoIdx && styles.promoDotActive]} />
-          ))}
-        </View>
+            {announcements.length > 1 && (
+              <View style={styles.promoDots}>
+                {announcements.map((_, i) => (
+                  <View key={i} style={[styles.promoDot, i === promoIdx && styles.promoDotActive]} />
+                ))}
+              </View>
+            )}
+          </>
+        )}
 
         {/* Categories */}
         {!dishLoading && dishes.length > 0 && (
@@ -466,6 +481,40 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
         })}
       </BlurView>
 
+      {/* Announcement bottom sheet */}
+      <Modal
+        visible={!!selectedAnnouncement}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setSelectedAnnouncement(null)}
+      >
+        <TouchableOpacity
+          style={styles.announcBackdrop}
+          activeOpacity={1}
+          onPress={() => setSelectedAnnouncement(null)}
+        />
+        {selectedAnnouncement && (
+          <View style={styles.announcSheet}>
+            <View style={styles.announcHandle} />
+            {selectedAnnouncement.imageUrl && (
+              <View style={[styles.announcImgWrap, { height: announcImgHeight }]}>
+                <Image
+                  source={{ uri: selectedAnnouncement.imageUrl }}
+                  style={styles.announcImg}
+                  resizeMode="cover"
+                />
+              </View>
+            )}
+            <View style={styles.announcBody}>
+              <Text style={styles.announcTitle}>{selectedAnnouncement.title}</Text>
+              {!!selectedAnnouncement.description && (
+                <Text style={styles.announcText}>{selectedAnnouncement.description}</Text>
+              )}
+            </View>
+          </View>
+        )}
+      </Modal>
+
       {/* Search sheet */}
       {searchOpen && (
         <Animated.View style={[styles.searchSheet, { transform: [{ translateY: slideAnim }] }]}>
@@ -477,7 +526,7 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
                 ref={searchRef}
                 style={styles.sheetInput}
                 placeholder="Блюдо или ингредиент"
-                placeholderTextColor="rgba(0,0,0,0.35)"
+                placeholderTextColor="rgba(255,255,255,0.35)"
                 value={search}
                 onChangeText={setSearch}
                 underlineColorAndroid="transparent"
@@ -518,7 +567,7 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
                   </View>
                   {dishUnavailable
                     ? <View style={styles.sheetUnavailableBadge}><Text style={styles.sheetUnavailableTxt}>Нет в наличии</Text></View>
-                    : <Ionicons name="chevron-forward" size={16} color="rgba(0,0,0,0.5)" />
+                    : <Ionicons name="chevron-forward" size={16} color="rgba(255,255,255,0.5)" />
                   }
                 </TouchableOpacity>
               );
@@ -622,15 +671,16 @@ const styles = StyleSheet.create({
     right: -60,
     bottom: -60,
   },
+  promoTextWrap: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 16, backgroundColor: 'rgba(0,0,0,0.45)' },
   promoTag: { color: GREEN, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 14 },
-  promoTitle: { color: '#FFFFFF', fontSize: 24, fontWeight: '800', marginBottom: 4 },
-  promoSub: { color: 'rgba(255,255,255,0.7)', fontSize: 15, fontWeight: '500' },
+  promoTitle: { color: '#FFFFFF', fontSize: 18, fontWeight: '800', marginBottom: 4 },
+  promoSub: { color: 'rgba(255,255,255,0.75)', fontSize: 13, fontWeight: '500' },
 
   promoDots: {
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 6,
-    marginTop: 12,
+    marginTop: 4,
     marginBottom: 16,
   },
   promoDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.12)' },
@@ -816,4 +866,23 @@ const styles = StyleSheet.create({
     borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4,
   },
   sheetUnavailableTxt: { color: '#e05252', fontSize: 11, fontWeight: '700' },
+
+  announcBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.6)' },
+  announcSheet: {
+    position: 'absolute', bottom: 0, left: 0, right: 0,
+    backgroundColor: '#1a1d18',
+    borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    overflow: 'hidden',
+    paddingBottom: 40,
+  },
+  announcHandle: {
+    width: 40, height: 4, borderRadius: 2,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignSelf: 'center', marginTop: 12, marginBottom: 16,
+  },
+  announcImgWrap: { marginHorizontal: 20, borderRadius: 16, overflow: 'hidden' },
+  announcImg:   { width: '100%', height: '100%' },
+  announcBody:  { padding: 20, gap: 10 },
+  announcTitle: { color: '#fff', fontSize: 20, fontWeight: '800' },
+  announcText:  { color: 'rgba(255,255,255,0.65)', fontSize: 15, lineHeight: 22 },
 });

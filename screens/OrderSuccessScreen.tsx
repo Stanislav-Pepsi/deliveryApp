@@ -3,8 +3,11 @@ import LottieView from 'lottie-react-native';
 import { io } from 'socket.io-client';
 import { useEffect, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   Animated,
   BackHandler,
+  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -13,7 +16,7 @@ import {
 } from 'react-native';
 import Text from '../components/Text';
 import { OrderDisplayItem } from '../App';
-import { fetchOrderById } from '../api/orders';
+import { cancelOrder, fetchOrderById } from '../api/orders';
 import { RestaurantInfo } from '../api/restaurant';
 
 const GREEN = '#8DBB00';
@@ -139,6 +142,23 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
   const [currentStatus, setCurrentStatus] = useState(initialStatus || 'CREATED');
   console.log('[OrderSuccess] mode:', mode, '| payment:', payment, '| initialStatus:', initialStatus, '| currentStatus(init):', initialStatus || 'CREATED');
   const [currentIikoNumber, setCurrentIikoNumber] = useState<number | null>(iikoNumber ?? null);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+
+  const confirmCancelOrder = async () => {
+    if (!orderId || !authToken) return;
+    setCancelling(true);
+    try {
+      const res = await cancelOrder(orderId, authToken);
+      setCurrentStatus(res.status || 'CANCELLED');
+      setShowCancelConfirm(false);
+    } catch (e: any) {
+      setShowCancelConfirm(false);
+      Alert.alert('Ошибка', e.message || 'Не удалось отменить заказ');
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   useEffect(() => {
     Animated.sequence([
@@ -238,6 +258,10 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
     ? itemsSum + (isDelivery && deliveryFee ? deliveryFee : 0)
     : total;
   const netTotal = Math.max(0, grandTotal - deductions);
+  const bonusBase = itemsSum > 0 ? itemsSum : total;
+  const estimatedBonuses = restaurantInfo?.cashbackPercent
+    ? Math.floor(bonusBase * restaurantInfo.cashbackPercent / 100)
+    : null;
   const steps = isDelivery ? STEPS_DELIVERY : STEPS_PICKUP;
   const icons = isDelivery ? ICONS_DELIVERY : ICONS_PICKUP;
   const effectiveAnimStatus = (!isDelivery && currentStatus === 'READY') ? 'READY_PICKUP' : currentStatus;
@@ -257,6 +281,7 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
     (STATUS_DESC[currentStatus] ?? '');
 
   const isCancelled = currentStatus === 'CANCELLED';
+  const canCancel = currentStatus === 'CREATED' && !!orderId && !!authToken;
 
   return (
     <View style={styles.root}>
@@ -368,16 +393,14 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
                   {netTotal.toLocaleString('ru-RU')} ₸ · {payment === 'kaspi' ? 'Картой' : 'Наличными'}
                 </Text>
               </View>
-              {(!!promoDiscount && promoDiscount > 0 || !!bonusesSpent && bonusesSpent > 0) && (
-                <View style={{ alignItems: 'flex-end' }}>
-                  {!!promoDiscount && promoDiscount > 0 && (
-                    <Text style={styles.bonusLine}>Скидка · {promoDiscount.toLocaleString('ru-RU')} ₸</Text>
-                  )}
-                  {!!bonusesSpent && bonusesSpent > 0 && (
-                    <Text style={styles.bonusLine}>Бонусы · {bonusesSpent.toLocaleString('ru-RU')} ₸</Text>
-                  )}
-                </View>
-              )}
+              <View style={{ alignItems: 'flex-end', gap: 4 }}>
+                {!!promoDiscount && promoDiscount > 0 && (
+                  <Text style={styles.bonusLine}>Скидка · {promoDiscount.toLocaleString('ru-RU')} ₸</Text>
+                )}
+                {!!bonusesSpent && bonusesSpent > 0 && (
+                  <Text style={styles.bonusLine}>Бонусы · {bonusesSpent.toLocaleString('ru-RU')} ₸</Text>
+                )}
+              </View>
             </View>
           </View>
 
@@ -436,6 +459,13 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
                       </Text>
                     </View>
                   )}
+                  {!!estimatedBonuses && estimatedBonuses > 0 && !isCancelled && (
+                    <View style={[styles.itemRow, { borderBottomWidth: 0, marginTop: -8 }]}>
+                      <Text style={styles.bonusEarnLine}>
+                        {currentStatus === 'DELIVERED' ? 'Начислено:' : 'Начислим:'}{' '}{estimatedBonuses.toLocaleString('ru-RU')} бонусов
+                      </Text>
+                    </View>
+                  )}
                 </>
               );
             })()}
@@ -471,6 +501,19 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
           </Animated.View>
         )}
 
+        {/* Cancel order */}
+        {canCancel && (
+          <Animated.View style={[{ width: '100%' }, { opacity: fadeAnim }]}>
+            <TouchableOpacity
+              style={styles.cancelBtn}
+              activeOpacity={0.85}
+              onPress={() => setShowCancelConfirm(true)}
+            >
+              <Text style={styles.cancelBtnTxt}>Отменить заказ</Text>
+            </TouchableOpacity>
+          </Animated.View>
+        )}
+
         {/* Buttons */}
         <Animated.View style={[styles.btns, { opacity: fadeAnim }]}>
           <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.85} onPress={onGoHome}>
@@ -480,6 +523,26 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      <Modal transparent visible={showCancelConfirm} animationType="fade" onRequestClose={() => setShowCancelConfirm(false)}>
+        <View style={styles.overlay}>
+          <View style={styles.dialog}>
+            <Text style={styles.dialogTitle}>Отменить заказ?</Text>
+            <Text style={styles.dialogMsg}>Вы уверены, что хотите отменить заказ? Это действие нельзя будет отменить.</Text>
+            <View style={styles.dialogBtns}>
+              <TouchableOpacity style={styles.dialogBtnNo} onPress={() => setShowCancelConfirm(false)} activeOpacity={0.8} disabled={cancelling}>
+                <Text style={styles.dialogBtnNoTxt}>Нет</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.dialogBtnYes} onPress={confirmCancelOrder} activeOpacity={0.8} disabled={cancelling}>
+                {cancelling
+                  ? <ActivityIndicator color="#e05252" />
+                  : <Text style={styles.dialogBtnYesTxt}>Да, отменить</Text>
+                }
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -530,7 +593,8 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
   infoVal: { color: '#fff', fontSize: 13, fontWeight: '500' },
   infoValOld: { color: 'rgba(255,255,255,0.35)', fontSize: 12, textDecorationLine: 'line-through', marginBottom: 1 },
-  bonusLine: { color: '#8DBB00', fontSize: 13, fontWeight: '500' },
+  bonusLine:     { color: '#8DBB00', fontSize: 13, fontWeight: '500' },
+  bonusEarnLine: { color: '#8DBB00', fontSize: 13, fontWeight: '700' },
   kaspiIcon: { width: 18, height: 18, marginTop: 1 },
 
   trackerCard: {
@@ -559,6 +623,37 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '500',
   },
   stepLabelDone: { color: GREEN },
+
+  cancelBtn: {
+    paddingVertical: 14, alignItems: 'center', justifyContent: 'center',
+    borderRadius: 30, borderWidth: 1, borderColor: 'rgba(224,82,82,0.4)',
+    backgroundColor: 'rgba(224,82,82,0.08)',
+    marginBottom: 8,
+  },
+  cancelBtnTxt: { color: '#e05252', fontSize: 15, fontWeight: '700' },
+
+  overlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.6)',
+    alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32,
+  },
+  dialog: {
+    width: '100%', backgroundColor: '#1a1f17',
+    borderRadius: 20, padding: 24,
+    borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)',
+  },
+  dialogTitle: { color: '#fff', fontSize: 18, fontWeight: '800', marginBottom: 8, textAlign: 'center' },
+  dialogMsg:   { color: 'rgba(255,255,255,0.5)', fontSize: 14, lineHeight: 20, marginBottom: 24, textAlign: 'center' },
+  dialogBtns:  { flexDirection: 'row', gap: 12 },
+  dialogBtnNo: {
+    flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+  dialogBtnNoTxt:  { color: '#fff', fontSize: 15, fontWeight: '600' },
+  dialogBtnYes: {
+    flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center',
+    backgroundColor: 'rgba(224,82,82,0.15)', borderWidth: 1, borderColor: '#e05252',
+  },
+  dialogBtnYesTxt: { color: '#e05252', fontSize: 15, fontWeight: '700' },
 
   itemRow: {
     flexDirection: 'row', alignItems: 'flex-start',

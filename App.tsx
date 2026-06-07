@@ -27,6 +27,8 @@ import ReservesScreen from './screens/ReservesScreen';
 import { MappedReserve } from './screens/ReservesScreen';
 import TableSelectionScreen from './screens/TableSelectionScreen';
 import { fetchFavorites, addFavorite, removeFavorite } from './api/favorites';
+import AnnouncementsScreen from './screens/AnnouncementsScreen';
+import { usePushNotifications, NotifData } from './hooks/usePushNotifications';
 
 export interface DishTag {
   key: string;
@@ -105,7 +107,7 @@ type Screen =
   | 'login' | 'home' | 'dish' | 'cart' | 'checkout' | 'success'
   | 'reservation' | 'tableSelection' | 'reservationSuccess' | 'reservationDetail' | 'banquetMenu' | 'banquetDish'
   | 'profile' | 'orders' | 'viewOrder' | 'reserves' | 'loyalty'
-  | 'addressBook' | 'addressPicker' | 'favorites';
+  | 'addressBook' | 'addressPicker' | 'favorites' | 'announcements';
 
 interface OrderInfo {
   total: number;
@@ -185,13 +187,35 @@ export default function App() {
     AsyncStorage.setItem(ADDR_KEY, JSON.stringify({ addresses, addressIdMap, activeAddress }));
   }, [addresses, addressIdMap, activeAddress]);
 
-  const refreshBalance = (token: string) =>
+  const refreshBalance = (token: string) => {
+    setLoyaltyBalance(null);
     fetchLoyaltyBalance(token).then(b => setLoyaltyBalance(b.balance)).catch(() => {});
+  };
 
   useEffect(() => {
     if (!authToken) return;
     refreshBalance(authToken);
   }, [authToken]);
+
+  const handleNotifNavigate = (data: NotifData) => {
+    switch (data.type) {
+      case 'order':
+      case 'new_order':
+        setScreen('orders');
+        break;
+      case 'reservation':
+        setScreen('reserves');
+        break;
+      case 'loyalty':
+        setScreen('loyalty');
+        break;
+      case 'announcement':
+        setScreen('announcements');
+        break;
+    }
+  };
+
+  const { unregisterToken } = usePushNotifications(authToken, handleNotifNavigate);
 
   const addToCart = (item: CartItem) => {
     setCart(prev => {
@@ -296,7 +320,7 @@ export default function App() {
         }}
         onEdit={(addr) => { setEditingAddrDisplay(addr); setAddrReturn('addressBook'); setScreen('addressPicker'); }}
         onAddNew={() => { setEditingAddrDisplay(null); setAddrReturn('addressBook'); setScreen('addressPicker'); }}
-        onBack={() => setScreen('profile')}
+        onBack={() => setScreen(addrReturn)}
       />
     );
   }
@@ -509,6 +533,9 @@ export default function App() {
       />
     );
   }
+  if (screen === 'announcements') {
+    return <AnnouncementsScreen onBack={() => setScreen('home')} />;
+  }
   if (screen === 'loyalty') {
     return (
       <LoyaltyScreen
@@ -545,6 +572,7 @@ export default function App() {
         onLoyaltyPress={() => setScreen('loyalty')}
         onFavoritesPress={() => setScreen('favorites')}
         onLogout={() => {
+          unregisterToken();
           setAuthToken(null);
           setAddresses([]);
           setAddressIdMap({});
@@ -557,7 +585,7 @@ export default function App() {
         }}
         onOrdersPress={() => setScreen('orders')}
         onReservesPress={() => setScreen('reserves')}
-        onAddressPress={() => setScreen('addressBook')}
+        onAddressPress={() => { setAddrReturn('profile'); setScreen('addressBook'); }}
         address={activeAddress}
       />
     );
@@ -579,6 +607,7 @@ export default function App() {
           restaurantInfo={restaurantInfo}
           favorites={favorites}
           onToggleFavorite={toggleFavorite}
+          onAnnouncementsPress={() => setScreen('announcements')}
         />
         {screen === 'dish' && selectedDish && (
           <View style={StyleSheet.absoluteFill}>

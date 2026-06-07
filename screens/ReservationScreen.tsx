@@ -66,12 +66,8 @@ interface Props {
 
 export default function ReservationScreen({ onBack, onNext, restaurantInfo, initialDate, initialTime, initialBookType }: Props) {
   const now = new Date();
-  const todayHours = getHoursForDay(restaurantInfo?.workingHours, now);
-  const openHour   = todayHours ? Math.floor(todayHours.openMin / 60)  : 6;
-  const closeHour  = todayHours ? Math.floor(todayHours.closeMin / 60) : 23;
-  const HOURS      = Array.from({ length: Math.max(closeHour - openHour + 1, 1) }, (_, i) => i + openHour);
-  const HOURS_INF  = Array.from({ length: HOURS.length * COPIES }, (_, i) => HOURS[i % HOURS.length]);
-  const MID_H      = HOURS.length;
+  const isToday = (d: number, m: number, y: number) =>
+    d === now.getDate() && m === now.getMonth() && y === now.getFullYear();
 
   const [bookType, setBookType] = useState(initialBookType ?? 'table');
   const [guests, setGuests]     = useState(2);
@@ -88,9 +84,34 @@ export default function ReservationScreen({ onBack, onNext, restaurantInfo, init
   const [calMonth, setCalMonth] = useState(initDate?.m ?? now.getMonth());
   const [selDate, setSelDate]   = useState<{ d: number; m: number; y: number } | null>(initDate);
 
+  const selDateIsToday = selDate ? isToday(selDate.d, selDate.m, selDate.y) : false;
+  const wheelIsToday   = !selDate || selDateIsToday;
+  const minMinutesFromNow     = 30;
+  const minMinutesBeforeClose = 120;
+
+  // Часы работы для колеса времени: выбранная дата, а если она ещё не выбрана — сегодня
+  const wheelDate     = selDate ? new Date(selDate.y, selDate.m, selDate.d) : now;
+  const wheelDayHours = getHoursForDay(restaurantInfo?.workingHours, wheelDate);
+  const openHour      = wheelDayHours ? Math.floor(wheelDayHours.openMin / 60)  : 6;
+  const closeHour     = wheelDayHours ? Math.floor(wheelDayHours.closeMin / 60) : 23;
+
+  // Колесо показывает только часы, на которые реально можно забронировать: не раньше
+  // чем через minMinutesFromNow от текущего момента (если бронь на сегодня) и не позже
+  // чем за minMinutesBeforeClose до закрытия
+  const earliestBookableMin = wheelIsToday ? now.getHours() * 60 + now.getMinutes() + minMinutesFromNow : -Infinity;
+  const latestBookableMin   = wheelDayHours ? wheelDayHours.closeMin - minMinutesBeforeClose : Infinity;
+
+  const HOURS_ALL = Array.from({ length: Math.max(closeHour - openHour + 1, 1) }, (_, i) => i + openHour);
+  const HOURS_BOOKABLE = HOURS_ALL.filter(h =>
+    MINUTES.some(m => { const t = h * 60 + m; return t >= earliestBookableMin && t <= latestBookableMin; })
+  );
+  const HOURS     = HOURS_BOOKABLE.length > 0 ? HOURS_BOOKABLE : HOURS_ALL;
+  const HOURS_INF = Array.from({ length: HOURS.length * COPIES }, (_, i) => HOURS[i % HOURS.length]);
+  const MID_H     = HOURS.length;
+
   // Time wheel
   const [timeOpen, setTimeOpen] = useState(false);
-  const defaultHour = Math.min(Math.max(12, openHour), closeHour);
+  const defaultHour = HOURS.find(h => h >= 12) ?? HOURS[HOURS.length - 1];
   const initHour = initialTime ? parseInt(initialTime.split(':')[0], 10) : defaultHour;
   const initMin  = initialTime ? parseInt(initialTime.split(':')[1], 10) : 0;
   const [selHour, setSelHour]   = useState(initHour);
@@ -104,6 +125,14 @@ export default function ReservationScreen({ onBack, onNext, restaurantInfo, init
     const sub = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });
     return () => sub.remove();
   }, [onBack]);
+
+  // Если выбранный час выпал из доступного диапазона (сменилась дата/часы работы) — подставляем ближайший доступный
+  useEffect(() => {
+    if (HOURS.includes(selHour)) return;
+    const fallback = HOURS.find(h => h >= selHour) ?? HOURS[HOURS.length - 1];
+    setSelHour(fallback);
+    setPendH(fallback);
+  }, [selDate, HOURS.join(',')]);
 
   const openTime = () => { setPendH(selHour); setPendM(selMin); setTimeOpen(true); };
 
@@ -131,8 +160,6 @@ export default function ReservationScreen({ onBack, onNext, restaurantInfo, init
     : null;
   const timeStr = `${String(selHour % 24).padStart(2, '0')}:${String(selMin).padStart(2, '0')}`;
 
-  const isToday    = (d: number, m: number, y: number) =>
-    d === now.getDate() && m === now.getMonth() && y === now.getFullYear();
   const isSelected = (d: number, m: number, y: number) =>
     selDate?.d === d && selDate?.m === m && selDate?.y === y;
   const isPast     = (d: number, m: number, y: number) =>
@@ -141,15 +168,14 @@ export default function ReservationScreen({ onBack, onNext, restaurantInfo, init
   const isTooFar   = (d: number, m: number, y: number) =>
     new Date(y, m, d) > maxDate;
 
-  const selDateIsToday = selDate
-    ? isToday(selDate.d, selDate.m, selDate.y)
-    : false;
-  const minMinutesFromNow = 30;
   const timeInPast = selDateIsToday && (() => {
     const selected = new Date(now.getFullYear(), now.getMonth(), now.getDate(), selHour % 24, selMin);
     const limit    = new Date(now.getTime() + minMinutesFromNow * 60 * 1000);
     return selected < limit;
   })();
+
+  const tooCloseToClosing = !!selDate && !!wheelDayHours
+    && (wheelDayHours.closeMin - (selHour * 60 + selMin)) < minMinutesBeforeClose;
 
   return (
     <View style={styles.root}>
@@ -240,11 +266,16 @@ export default function ReservationScreen({ onBack, onNext, restaurantInfo, init
             Выберите время минимум через {minMinutesFromNow} мин от текущего
           </Text>
         )}
+        {!timeInPast && tooCloseToClosing && (
+          <Text style={styles.timeError}>
+            Бронирование недоступно позднее чем за 2 часа до закрытия ресторана
+          </Text>
+        )}
         <TouchableOpacity
-          style={[styles.submitBtn, (!selDate || timeInPast) && styles.submitBtnOff]}
+          style={[styles.submitBtn, (!selDate || timeInPast || tooCloseToClosing) && styles.submitBtnOff]}
           activeOpacity={0.85}
-          disabled={!selDate || timeInPast}
-          onPress={() => selDate && !timeInPast && onNext(dateStr!, timeStr, guests, bookType as 'table' | 'banquet')}
+          disabled={!selDate || timeInPast || tooCloseToClosing}
+          onPress={() => selDate && !timeInPast && !tooCloseToClosing && onNext(dateStr!, timeStr, guests, bookType as 'table' | 'banquet')}
         >
           <Text style={styles.submitTxt}>Далее</Text>
         </TouchableOpacity>
@@ -518,8 +549,8 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)',
   },
   submitBtn: {
-    backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 18,
-    alignItems: 'center', borderWidth: 1, borderColor: GREEN,
+    backgroundColor: GREEN, borderRadius: 30, paddingVertical: 18,
+    alignItems: 'center',
   },
   submitBtnOff: { opacity: 0.4 },
   submitTxt:    { color: '#fff', fontSize: 17, fontWeight: '700' },
@@ -589,8 +620,8 @@ const styles = StyleSheet.create({
   timeSep: { color: '#fff', fontSize: 34, fontWeight: '700' },
 
   confirmBtn: {
-    backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 17,
-    alignItems: 'center', borderWidth: 1, borderColor: GREEN, marginHorizontal: 0,
+    backgroundColor: GREEN, borderRadius: 30, paddingVertical: 17,
+    alignItems: 'center', marginHorizontal: 0,
   },
   confirmTxt: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });

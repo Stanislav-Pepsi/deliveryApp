@@ -1,5 +1,7 @@
 ﻿import { AntDesign, Ionicons, Octicons } from '@expo/vector-icons';
+import { useEffect } from 'react';
 import {
+  BackHandler,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -29,6 +31,14 @@ interface Props {
 export default function AddressBookScreen({
   addresses, activeAddress, labelMap = {}, onSelect, onDelete, onEdit, onAddNew, onBack,
 }: Props) {
+  useEffect(() => {
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      onBack();
+      return true;
+    });
+    return () => sub.remove();
+  }, [onBack]);
+
   return (
     <View style={styles.root}>
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />

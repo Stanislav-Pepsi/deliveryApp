@@ -364,7 +364,7 @@ const styles = StyleSheet.create({
     color: '#fff', fontSize: 14, paddingHorizontal: 14, paddingVertical: 12,
     minHeight: 44, textAlignVertical: 'top',
   },
-  confirmBtn:    { backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 18, alignItems: 'center' },
+  confirmBtn:    { backgroundColor: GREEN, borderRadius: 30, paddingVertical: 18, alignItems: 'center' },
   confirmBtnOff: { opacity: 0.4 },
   confirmTxt:    { color: '#fff', fontSize: 17, fontWeight: '700' },
 

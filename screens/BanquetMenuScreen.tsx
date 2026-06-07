@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
   totalRow:      { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   totalQtyTxt:   { color: 'rgba(255,255,255,0.5)', fontSize: 13 },
   totalPriceTxt: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  doneBtn:       { backgroundColor: GREEN_DARK, borderRadius: 30, paddingVertical: 18, alignItems: 'center' },
+  doneBtn:       { backgroundColor: GREEN, borderRadius: 30, paddingVertical: 18, alignItems: 'center' },
   doneBtnTxt:    { color: '#fff', fontSize: 17, fontWeight: '700' },
 
   cartBtn:      { width: 42, height: 42, alignItems: 'center', justifyContent: 'center' },

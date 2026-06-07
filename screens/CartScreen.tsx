@@ -1,7 +1,8 @@
 ﻿import { Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
+  Animated,
   BackHandler,
   Image,
   ScrollView,
@@ -50,9 +51,28 @@ export default function CartScreen({ items, dishes, onUpdateQty, onBack, onCheck
 
   const subtotal = items.reduce((sum, item) => sum + item.unitPrice * item.qty, 0);
   const delivery = items.length > 0 && deliveryFeeAmount ? deliveryFeeAmount : 0;
+
+  // minOrderAmount проверяется от суммы еды без доставки
+  const isPromoReady = !promoResult?.minOrderAmount || subtotal >= promoResult.minOrderAmount;
+
+  const promoPct = promoResult?.minOrderAmount
+    ? Math.min(100, (subtotal / promoResult.minOrderAmount) * 100)
+    : 0;
+  const progressAnim = useRef(new Animated.Value(promoPct)).current;
+  useEffect(() => {
+    Animated.timing(progressAnim, {
+      toValue: promoPct,
+      duration: 400,
+      useNativeDriver: false,
+    }).start();
+  }, [promoPct]);
+
+  const giftDish = promoResult?.discountType === 'GIFT_ITEM' && promoResult.giftProductId && isPromoReady
+    ? (dishes ?? []).find(d => d.id === promoResult.giftProductId) ?? null
+    : null;
   const total = subtotal + delivery;
   const bonusesToSpend = useBonus && loyaltyBalance ? loyaltyBalance : 0;
-  const promoDiscount = promoResult ? calcDiscount(promoResult, subtotal) : 0;
+  const promoDiscount = promoResult && isPromoReady ? calcDiscount(promoResult, total) : 0;
   const finalTotal = Math.max(0, total - bonusesToSpend - promoDiscount);
 
   const applyPromo = async () => {
@@ -145,6 +165,24 @@ export default function CartScreen({ items, dishes, onUpdateQty, onBack, onCheck
               );
             })}
 
+            {giftDish && (
+              <View style={[styles.itemCard, styles.giftCard]}>
+                {giftDish.img
+                  ? <Image source={giftDish.img} style={styles.itemImg} resizeMode="cover" />
+                  : <View style={[styles.itemImg, { backgroundColor: '#1a2010' }]} />
+                }
+                <View style={styles.itemInfo}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                    <Text style={styles.itemName}>{giftDish.name}</Text>
+                    <View style={styles.giftBadge}>
+                      <Text style={styles.giftBadgeTxt}>🎁 Подарок</Text>
+                    </View>
+                  </View>
+                  <Text style={[styles.itemPrice, { color: GREEN }]}>Бесплатно</Text>
+                </View>
+              </View>
+            )}
+
           </>
         )}
 
@@ -154,6 +192,34 @@ export default function CartScreen({ items, dishes, onUpdateQty, onBack, onCheck
       {/* Bottom: promo + summary + button */}
       {items.length > 0 && (
         <View style={styles.bottomBar}>
+
+          {/* Прогресс промокода */}
+          {!!promoResult && !!promoResult.minOrderAmount && !isPromoReady && (
+            <View style={styles.promoProgressWrap}>
+              <View style={styles.promoProgressRow}>
+                <Text style={styles.promoProgressLabel}>
+                  {subtotal.toLocaleString('ru-RU')} / {promoResult.minOrderAmount.toLocaleString('ru-RU')} ₸
+                </Text>
+                <Text style={styles.promoProgressPct}>{Math.round(promoPct)}%</Text>
+              </View>
+              <View style={styles.promoProgressBar}>
+                <Animated.View
+                  style={[
+                    styles.promoProgressFill,
+                    { width: progressAnim.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] }) },
+                  ]}
+                />
+              </View>
+              <Text style={styles.promoProgressHint}>
+                Добавьте ещё на{' '}
+                <Text style={{ color: GREEN, fontWeight: '700' }}>
+                  {(promoResult.minOrderAmount - subtotal).toLocaleString('ru-RU')} ₸
+                </Text>
+                {' '}чтобы получить скидку
+              </Text>
+            </View>
+          )}
+
           {/* Promo + Summary block */}
           <View style={styles.summaryCard}>
             <View style={[styles.promoRow, useBonus && { opacity: 0.4 }]}>
@@ -180,7 +246,12 @@ export default function CartScreen({ items, dishes, onUpdateQty, onBack, onCheck
             </View>
             {!!promoError && <Text style={styles.promoErrorTxt}>{promoError}</Text>}
             {!!promoResult && (
-              <Text style={styles.promoSuccessTxt}>✓ {promoLabel(promoResult)}</Text>
+              <Text style={styles.promoSuccessTxt}>
+                {isPromoReady ? `✓ ${promoLabel(promoResult)}` : `✓ ${promoResult.description || promoResult.code}`}
+              </Text>
+            )}
+            {promoResult?.discountType === 'FIXED_DISCOUNT' && isPromoReady && !!promoResult.description && (
+              <Text style={styles.promoDescTxt}>{promoResult.description}</Text>
             )}
 
             {/* Bonus row */}
@@ -340,6 +411,41 @@ const styles = StyleSheet.create({
   promoBtnTxt: { color: '#fff', fontWeight: '700', fontSize: 13 },
   promoErrorTxt:   { color: '#e05252', fontSize: 12, marginTop: -6 },
   promoSuccessTxt: { color: GREEN, fontSize: 12, fontWeight: '600', marginTop: -6 },
+  promoDescTxt:    { color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: -8 },
+  promoProgressWrap: {
+    backgroundColor: 'rgba(141,187,0,0.1)',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(141,187,0,0.25)',
+    padding: 12,
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+  promoProgressRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  promoProgressLabel: { color: 'rgba(255,255,255,0.6)', fontSize: 12 },
+  promoProgressAmount: { color: GREEN, fontWeight: '700' },
+  promoProgressPct: { color: GREEN, fontSize: 12, fontWeight: '600' },
+  promoProgressHint: { color: 'rgba(255,255,255,0.5)', fontSize: 12, marginTop: 6 },
+  promoProgressBar: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.12)',
+    overflow: 'hidden',
+  },
+  promoProgressFill: {
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: GREEN,
+  },
+
+  giftCard: { borderWidth: 1, borderColor: 'rgba(141,187,0,0.3)', backgroundColor: 'rgba(141,187,0,0.05)' },
+  giftBadge: { backgroundColor: 'rgba(141,187,0,0.15)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  giftBadgeTxt: { color: GREEN, fontSize: 11, fontWeight: '700' },
 
   summary: {
     backgroundColor: CARD,

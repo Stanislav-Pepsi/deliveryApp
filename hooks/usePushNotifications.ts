@@ -1,6 +1,13 @@
 import { useEffect, useRef } from 'react';
-import { Alert, Platform } from 'react-native';
-import messaging from '@react-native-firebase/messaging';
+import { Platform } from 'react-native';
+import {
+  getMessaging,
+  getToken,
+  onMessage,
+  requestPermission,
+  AuthorizationStatus,
+} from '@react-native-firebase/messaging';
+import notifee, { EventType } from '@notifee/react-native';
 import { registerDeviceToken, unregisterDeviceToken } from '../api/deviceTokens';
 
 export interface NotifData {
@@ -17,35 +24,42 @@ export function usePushNotifications(
   const navigateRef = useRef(onNavigate);
   useEffect(() => { navigateRef.current = onNavigate; }, [onNavigate]);
 
-  // One-time: handle taps from background / terminated state
+  // One-time: handle taps from terminated state and foreground/background press
   useEffect(() => {
-    const unsubBg = messaging().onNotificationOpenedApp(msg => {
-      if (msg.data?.type) navigateRef.current(msg.data as NotifData);
+    // Terminated: app opened via notification tap
+    notifee.getInitialNotification().then(initial => {
+      if (initial?.notification?.data?.type) {
+        navigateRef.current(initial.notification.data as NotifData);
+      }
+    }).catch(() => {});
+
+    // Background/foreground: user taps notification while app is alive
+    const unsub = notifee.onForegroundEvent(({ type, detail }) => {
+      if (type === EventType.PRESS && detail.notification?.data?.type) {
+        navigateRef.current(detail.notification.data as NotifData);
+      }
     });
 
-    messaging()
-      .getInitialMessage()
-      .then(msg => {
-        if (msg?.data?.type) navigateRef.current(msg.data as NotifData);
-      })
-      .catch(() => {});
-
-    return () => unsubBg();
+    return () => unsub();
   }, []);
 
-  // Auth-dependent: request permission, register token, foreground handler
+  // Auth-dependent: request permission, register token, suppress foreground notifications
   useEffect(() => {
     if (!authToken) return;
+
+    let messaging: ReturnType<typeof getMessaging>;
+    try { messaging = getMessaging(); } catch { return; }
+
     let cancelled = false;
 
     const setup = async () => {
-      const status = await messaging().requestPermission();
+      const status = await requestPermission(messaging);
       const allowed =
-        status === messaging.AuthorizationStatus.AUTHORIZED ||
-        status === messaging.AuthorizationStatus.PROVISIONAL;
+        status === AuthorizationStatus.AUTHORIZED ||
+        status === AuthorizationStatus.PROVISIONAL;
       if (!allowed || cancelled) return;
 
-      const fcmToken = await messaging().getToken();
+      const fcmToken = await getToken(messaging);
       if (cancelled) return;
       tokenRef.current = fcmToken;
 
@@ -58,18 +72,8 @@ export function usePushNotifications(
 
     setup().catch(() => {});
 
-    const unsubFg = messaging().onMessage(async msg => {
-      const data  = (msg.data ?? {}) as NotifData;
-      const title = msg.notification?.title ?? '';
-      const body  = msg.notification?.body  ?? '';
-      if (!title && !body) return;
-      Alert.alert(title, body, [
-        { text: 'Закрыть', style: 'cancel' },
-        ...(data.type
-          ? [{ text: 'Открыть', onPress: () => navigateRef.current(data) }]
-          : []),
-      ]);
-    });
+    // Suppress foreground notifications — shown only when app is in background/terminated
+    const unsubFg = onMessage(messaging, async () => {});
 
     return () => {
       cancelled = true;

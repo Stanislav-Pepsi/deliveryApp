@@ -1,12 +1,14 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useEffect, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Image, StyleSheet, View } from 'react-native';
 import { useFonts } from 'expo-font';
 import { addAddress, addressDisplay, deleteAddress, fetchAddresses, updateAddress } from './api/addresses';
 
-const ADDR_KEY = 'basilic_addresses';
+const ADDR_KEY  = 'starten_addresses';
+const AUTH_KEY  = 'starten_auth';
 import { fetchLoyaltyBalance } from './api/loyalty';
 import { RestaurantInfo, fetchRestaurantInfo } from './api/restaurant';
+import { fetchOrderById, ApiOrder } from './api/orders';
 import AddressBookScreen from './screens/AddressBookScreen';
 import AddressPickerScreen from './screens/AddressPickerScreen';
 import BanquetMenuScreen from './screens/BanquetMenuScreen';
@@ -126,6 +128,7 @@ export default function App() {
     'Nunito': require('./assets/fonts/ofont.ru_Nunito.ttf'),
   });
 
+  const [isLoading, setIsLoading]     = useState(true);
   const [screen, setScreen]           = useState<Screen>('login');
   const [selectedDish, setSelectedDish] = useState<DishData | null>(null);
   const [cart, setCart]               = useState<CartItem[]>([]);
@@ -170,6 +173,33 @@ export default function App() {
   };
 
   useEffect(() => {
+    AsyncStorage.getItem(AUTH_KEY).then(raw => {
+      if (!raw) return;
+      try {
+        const { token, phone, name } = JSON.parse(raw);
+        if (token) {
+          setAuthToken(token);
+          setUserPhone(phone ?? '');
+          setProfileName(name ?? '');
+          fetchRestaurantInfo(token).then(setRestaurantInfo).catch(() => {});
+          fetchFavorites(token).then(setFavorites).catch(() => {});
+          fetchAddresses(token).then(addrs => {
+            const displays = addrs.map(a => addressDisplay(a));
+            const idMap: Record<string, string> = {};
+            const labelMap: Record<string, string> = {};
+            addrs.forEach(a => { const d = addressDisplay(a); idMap[d] = a.id; if (a.label) labelMap[d] = a.label; });
+            setAddresses(displays);
+            setAddressIdMap(idMap);
+            setAddressLabelMap(labelMap);
+            if (displays.length > 0) setActiveAddress(displays[0]);
+          }).catch(() => {});
+          setScreen('home');
+        }
+      } catch {}
+    }).finally(() => setIsLoading(false));
+  }, []);
+
+  useEffect(() => {
     AsyncStorage.getItem(ADDR_KEY).then(raw => {
       if (!raw) return;
       try {
@@ -201,7 +231,41 @@ export default function App() {
     switch (data.type) {
       case 'order':
       case 'new_order':
-        setScreen('orders');
+        if (data.orderId && authToken) {
+          fetchOrderById(data.orderId, authToken).then((o: ApiOrder) => {
+            let addressText = '';
+            if (o.deliveryAddress) {
+              try {
+                const p = JSON.parse(o.deliveryAddress);
+                const base = [p.streetName, p.house].filter(Boolean).join(', ');
+                const details = [p.floor ? `этаж ${p.floor}` : '', p.flat ? `кв. ${p.flat}` : ''].filter(Boolean).join(', ');
+                addressText = details ? `${base}, ${details}` : base;
+              } catch { addressText = o.deliveryAddress; }
+            }
+            setSelectedOrder({
+              id: o.id,
+              iikoNumber: o.iikoNumber,
+              status: o.status,
+              total: parseFloat(o.totalAmount),
+              bonusesSpent: o.bonusesSpent ? parseFloat(o.bonusesSpent) : null,
+              deliveryFee: o.deliveryFee ? parseFloat(o.deliveryFee) : null,
+              promoDiscount: o.promoDiscount ? parseFloat(o.promoDiscount) : null,
+              deliveryType: o.orderType === 'DELIVERY' ? 'delivery' : 'pickup',
+              payment: o.paymentType === 'SCASH' ? 'cash' : 'kaspi',
+              address: addressText,
+              createdAt: o.createdAt,
+              orderItems: (o.items ?? []).map(i => ({
+                name: i.name || 'Позиция',
+                meta: i.sizeName || undefined,
+                qty: i.amount,
+                total: i.price * i.amount,
+              })),
+            });
+            setScreen('viewOrder');
+          }).catch(() => setScreen('orders'));
+        } else {
+          setScreen('orders');
+        }
         break;
       case 'reservation':
         setScreen('reserves');
@@ -254,7 +318,17 @@ export default function App() {
     );
   };
 
-  if (!fontsLoaded) return null;
+  if (!fontsLoaded || isLoading) {
+    return (
+      <View style={styles.splash}>
+        <Image
+          source={require('./assets/star10_logo_with_title.png')}
+          style={styles.splashLogo}
+          resizeMode="contain"
+        />
+      </View>
+    );
+  }
 
   if (screen === 'banquetDish' && banquetDish) {
     return (
@@ -459,6 +533,7 @@ export default function App() {
               unitPrice: i.unitPrice,
               qty: i.qty,
             })) : undefined,
+            serviceChargePercent: restaurantInfo?.serviceChargePercent ?? 0,
           });
           setBanquetItems([]);
           setBanquetTableId(null);
@@ -581,6 +656,7 @@ export default function App() {
           setLoyaltyBalance(null);
           setFavorites(new Set());
           AsyncStorage.removeItem(ADDR_KEY);
+          AsyncStorage.removeItem(AUTH_KEY);
           setScreen('login');
         }}
         onOrdersPress={() => setScreen('orders')}
@@ -607,7 +683,6 @@ export default function App() {
           restaurantInfo={restaurantInfo}
           favorites={favorites}
           onToggleFavorite={toggleFavorite}
-          onAnnouncementsPress={() => setScreen('announcements')}
         />
         {screen === 'dish' && selectedDish && (
           <View style={StyleSheet.absoluteFill}>
@@ -625,6 +700,7 @@ export default function App() {
     setProfileName(name);
     setAuthToken(token);
     setUserPhone(phone);
+    AsyncStorage.setItem(AUTH_KEY, JSON.stringify({ token, phone, name }));
     fetchAddresses(token).then(addrs => {
       const texts = addrs.map(a => addressDisplay(a));
       const map: Record<string, string> = {};
@@ -643,3 +719,16 @@ export default function App() {
     setScreen('home');
   }} />;
 }
+
+const styles = StyleSheet.create({
+  splash: {
+    flex: 1,
+    backgroundColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  splashLogo: {
+    width: 260,
+    height: 260,
+  },
+});

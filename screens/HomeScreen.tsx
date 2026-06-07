@@ -234,7 +234,9 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
         {/* Header */}
         <View style={styles.header}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.restaurantName}>{restaurantInfo?.name ?? 'Базилик'}</Text>
+            {restaurantInfo?.name ? (
+              <Text style={styles.restaurantName}>{restaurantInfo.name}</Text>
+            ) : null}
             <TouchableOpacity style={styles.addrRow} onPress={onAddressPress} activeOpacity={0.7}>
               <Ionicons name="location-outline" size={13} color={GREEN} />
               <Text style={styles.addrTxt} numberOfLines={1}>

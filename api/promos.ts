@@ -6,6 +6,8 @@ export interface PromoResult {
   discountType: 'PERCENT_DISCOUNT' | 'FIXED_DISCOUNT' | 'GIFT_ITEM';
   discountValue: number;
   description: string;
+  giftProductId?: string;
+  minOrderAmount?: number;
 }
 
 const ERROR_MAP: [string, string][] = [
@@ -31,7 +33,16 @@ export async function validatePromo(code: string, token: string): Promise<PromoR
     }
     throw new Error(msg || 'Ошибка проверки промокода');
   }
-  return data;
+  const discountValue = Number(
+    data.discountValue ?? data.discount_value ?? data.value ?? data.discount ?? data.amount ?? 0
+  );
+  const giftProductId: string | undefined =
+    data.giftProductId ?? data.gift_product_id ?? undefined;
+  const minOrderAmount: number | undefined =
+    data.minOrderAmount != null ? Number(data.minOrderAmount)
+    : data.min_order_amount != null ? Number(data.min_order_amount)
+    : undefined;
+  return { ...data, discountValue, giftProductId, minOrderAmount };
 }
 
 export function calcDiscount(promo: PromoResult, subtotal: number): number {
@@ -43,7 +54,7 @@ export function calcDiscount(promo: PromoResult, subtotal: number): number {
 }
 
 export function promoLabel(promo: PromoResult): string {
-  if (promo.discountType === 'PERCENT_DISCOUNT') return `Скидка ${promo.discountValue}%`;
-  if (promo.discountType === 'FIXED_DISCOUNT')   return `Скидка ${promo.discountValue.toLocaleString('ru-RU')} ₸`;
+  if (promo.discountType === 'PERCENT_DISCOUNT') return `−${promo.discountValue}%`;
+  if (promo.discountType === 'FIXED_DISCOUNT')   return `−${promo.discountValue.toLocaleString('ru-RU')} ₸`;
   return promo.description || 'Подарок';
 }

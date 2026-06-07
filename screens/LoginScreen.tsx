@@ -2,7 +2,7 @@
 import { useState } from 'react';
 import {
   ActivityIndicator,
-  ImageBackground,
+  Image,
   StyleSheet,
   TextInput,
   TouchableOpacity,
@@ -25,6 +25,7 @@ export default function LoginScreen({ onSuccess }: Props) {
   const [codeFocused, setCodeFocused] = useState(false);
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState('');
+  const [agreed, setAgreed]           = useState(false);
 
   const rawPhone = '+7' + phone.replace(/\s/g, '');
 
@@ -78,28 +79,20 @@ export default function LoginScreen({ onSuccess }: Props) {
   };
 
   return (
-    <ImageBackground
-      source={require('../assets/pexels-esra-afsar-123882149-29637358.jpg')}
-      style={styles.root}
-      resizeMode="cover"
-    >
-      <View style={styles.overlay} />
-      <StatusBar style="light" />
+    <View style={styles.root}>
+      <StatusBar style="dark" />
 
       <View style={styles.content}>
-        <View style={styles.logoRow}>
-          <Text style={styles.logoText}>ba</Text>
-          <Text style={styles.logoGreen}>silic</Text>
-        </View>
+        <Image
+          source={require('../assets/star10_logo_without_bg.png')}
+          style={styles.logo}
+          resizeMode="contain"
+        />
 
         <Text style={styles.title}>
-          <Text style={styles.titleWhite}>Войти в </Text>
-          <Text style={styles.titleGreen}>Базилик</Text>
+          <Text style={styles.titleWhite}>Авторизация</Text>
         </Text>
 
-        <Text style={styles.subtitle}>
-          Введите номер телефона — мы отправим SMS-код,{'\n'}чтобы подтвердить, что это вы.
-        </Text>
 
         <Text style={styles.label}>ИМЯ</Text>
         <View style={[styles.inputBox, nameFocused && styles.inputBoxFocused]}>
@@ -108,7 +101,7 @@ export default function LoginScreen({ onSuccess }: Props) {
             value={name}
             onChangeText={(t) => { setName(t); setError(''); }}
             placeholder="Введите ваше имя"
-            placeholderTextColor="rgba(255,255,255,0.35)"
+            placeholderTextColor="rgba(0,0,0,0.3)"
             returnKeyType="next"
             onFocus={() => setNameFocused(true)}
             onBlur={() => setNameFocused(false)}
@@ -130,7 +123,7 @@ export default function LoginScreen({ onSuccess }: Props) {
             onChangeText={formatPhone}
             keyboardType="phone-pad"
             placeholder="777 123 45 67"
-            placeholderTextColor="rgba(255,255,255,0.35)"
+            placeholderTextColor="rgba(0,0,0,0.3)"
             maxLength={13}
             onFocus={() => setFocused(true)}
             onBlur={() => setFocused(false)}
@@ -151,7 +144,7 @@ export default function LoginScreen({ onSuccess }: Props) {
                 onChangeText={(t) => { setCode(t.replace(/\D/g, '').slice(0, 4)); setError(''); }}
                 keyboardType="number-pad"
                 placeholder="• • • •"
-                placeholderTextColor="rgba(255,255,255,0.35)"
+                placeholderTextColor="rgba(0,0,0,0.3)"
                 maxLength={4}
                 onFocus={() => setCodeFocused(true)}
                 onBlur={() => setCodeFocused(false)}
@@ -167,19 +160,24 @@ export default function LoginScreen({ onSuccess }: Props) {
 
         {!!error && <Text style={styles.errorTxt}>{error}</Text>}
 
-        <Text style={styles.terms}>
-          {'Продолжая, вы соглашаетесь с '}
-          <Text style={styles.termsLink}>условиями и{'\n'}политикой конфиденциальности</Text>
-          {'.'}
-        </Text>
+        <TouchableOpacity style={styles.termsRow} activeOpacity={0.7} onPress={() => { if (!codeSent) setAgreed(v => !v); }} disabled={codeSent}>
+          <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
+            {agreed && <Text style={styles.checkmark}>✓</Text>}
+          </View>
+          <Text style={[styles.terms, { flex: 1 }]}>
+            {'Продолжая, вы соглашаетесь с '}
+            <Text style={styles.termsLink}>условиями и политикой конфиденциальности</Text>
+            {'.'}
+          </Text>
+        </TouchableOpacity>
       </View>
 
       <View style={styles.bottom}>
         <TouchableOpacity
-          style={[styles.button, loading && styles.buttonDisabled]}
+          style={[styles.button, (loading || (!agreed && !codeSent)) && styles.buttonDisabled]}
           activeOpacity={0.85}
           onPress={handlePress}
-          disabled={loading}
+          disabled={loading || (!agreed && !codeSent)}
         >
           {loading
             ? <ActivityIndicator color="#fff" />
@@ -197,7 +195,7 @@ export default function LoginScreen({ onSuccess }: Props) {
           </Text>
         )}
       </View>
-    </ImageBackground>
+    </View>
   );
 }
 
@@ -205,30 +203,25 @@ const GREEN        = '#8DBB00';
 const GREEN_BORDER = '#6A9A00';
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  overlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(10,12,8,0.78)',
-  },
+  root: { flex: 1, backgroundColor: '#fff' },
   content: {
     flex: 1,
     paddingHorizontal: 24,
     paddingTop: 56,
   },
-  logoRow:   { flexDirection: 'row', marginBottom: 24 },
-  logoText:  { color: '#fff', fontSize: 18, fontWeight: '700', letterSpacing: 0.3 },
-  logoGreen: { color: GREEN,  fontSize: 18, fontWeight: '700', letterSpacing: 0.3 },
-  title:       { fontSize: 36, fontWeight: '800', marginBottom: 14, lineHeight: 44 },
-  titleWhite:  { color: '#fff' },
+  logo: { width: 160, height: 160, marginTop: -50, marginBottom: -30, alignSelf: 'center' },
+  title:       { fontSize: 36, fontWeight: '800', marginBottom: 14, lineHeight: 44, textAlign: 'center' },
+  titleWhite:  { color: '#111' },
   titleGreen:  { color: GREEN },
   subtitle: {
-    color: 'rgba(255,255,255,0.6)',
+    color: 'rgba(0,0,0,0.45)',
     fontSize: 15,
     lineHeight: 22,
     marginBottom: 32,
+    textAlign: 'center',
   },
   label: {
-    color: 'rgba(255,255,255,0.45)',
+    color: 'rgba(0,0,0,0.4)',
     fontSize: 12,
     fontWeight: '600',
     letterSpacing: 1.2,
@@ -237,10 +230,10 @@ const styles = StyleSheet.create({
   inputBox: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: '#f5f5f5',
     borderRadius: 14,
     borderWidth: 1.5,
-    borderColor: 'rgba(255,255,255,0.15)',
+    borderColor: 'rgba(0,0,0,0.08)',
     paddingVertical: 2,
     paddingHorizontal: 4,
     marginBottom: 20,
@@ -250,13 +243,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 14,
     borderRightWidth: 1,
-    borderRightColor: 'rgba(255,255,255,0.15)',
+    borderRightColor: 'rgba(0,0,0,0.1)',
     marginRight: 4,
   },
-  countryCodeText: { color: '#fff', fontSize: 17, fontWeight: '500' },
+  countryCodeText: { color: '#111', fontSize: 17, fontWeight: '500' },
   input: {
     flex: 1,
-    color: '#fff',
+    color: '#111',
     fontSize: 17,
     paddingHorizontal: 12,
     paddingVertical: 14,
@@ -268,7 +261,16 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     fontWeight: '500',
   },
-  terms:     { color: 'rgba(255,255,255,0.45)', fontSize: 13, lineHeight: 20 },
+  termsRow:  { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 4 },
+  checkbox: {
+    width: 20, height: 20, borderRadius: 5,
+    borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.25)',
+    alignItems: 'center', justifyContent: 'center',
+    marginTop: 1, flexShrink: 0,
+  },
+  checkboxChecked: { backgroundColor: GREEN, borderColor: GREEN },
+  checkmark: { color: '#fff', fontSize: 12, fontWeight: '800' },
+  terms:     { color: 'rgba(0,0,0,0.4)', fontSize: 13, lineHeight: 20 },
   termsLink: { color: GREEN },
   bottom: { paddingHorizontal: 24, paddingBottom: 36, gap: 16 },
   button: {
@@ -280,13 +282,13 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: '#fff', fontSize: 18, fontWeight: '700', letterSpacing: 0.2 },
   resendTxt: {
-    color: 'rgba(255,255,255,0.45)',
+    color: 'rgba(0,0,0,0.4)',
     fontSize: 14,
     textAlign: 'center',
     textDecorationLine: 'underline',
   },
   hint: {
-    color: 'rgba(255,255,255,0.35)',
+    color: 'rgba(0,0,0,0.3)',
     fontSize: 13,
     textAlign: 'center',
     lineHeight: 20,

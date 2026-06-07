@@ -36,6 +36,7 @@ export interface ReservationResult {
   bookType: 'table' | 'banquet';
   comment?: string;
   banquetItems?: { name: string; sizeName: string; extras: string[]; unitPrice: number; qty: number }[];
+  serviceChargePercent?: number;
 }
 
 interface Props {
@@ -212,7 +213,7 @@ export default function ReservationSuccessScreen({ result, authToken, restaurant
                   </View>
                 ))}
                 {(() => {
-                  const scp = restaurantInfo?.serviceChargePercent ?? 0;
+                  const scp = result.serviceChargePercent ?? restaurantInfo?.serviceChargePercent ?? 0;
                   const itemsTotal = result.banquetItems!.reduce((s, i) => s + i.unitPrice * i.qty, 0);
                   const charge = scp > 0 ? Math.round(itemsTotal * scp / 100) : 0;
                   return (

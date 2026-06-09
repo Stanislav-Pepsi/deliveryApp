@@ -39,6 +39,7 @@ interface Props {
   onBanquetMenu?: () => void;
   onConfirm: (result: { reservationId: string; tableName: string; tableNumber?: number; sectionName?: string; guests: number; comment?: string }) => void;
   authToken: string | null;
+  isDemoMode?: boolean;
 }
 
 function formatDate(s: string) {
@@ -49,7 +50,7 @@ function formatDate(s: string) {
 
 export default function TableSelectionScreen({
   date, time, guests, bookType, banquetItems, banquetTotal, serviceChargePercent, phone,
-  tableId, onTableChange, onBack, onBanquetMenu, onConfirm, authToken,
+  tableId, onTableChange, onBack, onBanquetMenu, onConfirm, authToken, isDemoMode,
 }: Props) {
   const [sections, setSections] = useState<TableSection[]>([]);
   const [sectionId, setSectionId] = useState('');
@@ -67,6 +68,22 @@ export default function TableSelectionScreen({
   }, [onBack]);
 
   useEffect(() => {
+    if (isDemoMode) {
+      const mockSection: TableSection = {
+        id: 'demo-section-1',
+        name: 'Основной зал',
+        tables: [
+          { id: 'demo-t1', number: 1, name: '1', capacity: 4, isAvailable: true } as any,
+          { id: 'demo-t2', number: 2, name: '2', capacity: 2, isAvailable: true } as any,
+          { id: 'demo-t3', number: 3, name: '3', capacity: 6, isAvailable: true } as any,
+          { id: 'demo-t4', number: 4, name: '4', capacity: 4, isAvailable: false } as any,
+        ],
+      };
+      setSections([mockSection]);
+      setSectionId(mockSection.id);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setLoadError('');
     const [d, m, y] = date.split('.');
@@ -81,7 +98,7 @@ export default function TableSelectionScreen({
       })
       .catch(e => setLoadError(e.message || 'Ошибка загрузки залов'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [isDemoMode]);
 
   const currentSection = sections.find(s => s.id === sectionId);
   const allTables: ApiTable[] = sections.flatMap(s => s.tables);
@@ -90,7 +107,12 @@ export default function TableSelectionScreen({
   const guestWord  = guests === 1 ? 'ГОСТЬ' : guests < 5 ? 'ГОСТЯ' : 'ГОСТЕЙ';
 
   const handleConfirm = async () => {
-    if (!selTable || !authToken) return;
+    if (!selTable) return;
+    if (isDemoMode) {
+      onConfirm({ reservationId: 'demo-res-new', tableName: selTable.name, tableNumber: selTable.number || undefined, sectionName: sections.find(s => s.id === sectionId)?.name, guests: localGuests, comment: comment.trim() || undefined });
+      return;
+    }
+    if (!authToken) return;
     setConfirmError('');
     setConfirming(true);
     try {

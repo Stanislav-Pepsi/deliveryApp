@@ -8,6 +8,7 @@ const ADDR_KEY  = 'starten_addresses';
 const AUTH_KEY  = 'starten_auth';
 import { fetchLoyaltyBalance } from './api/loyalty';
 import { RestaurantInfo, fetchRestaurantInfo, isOpenNow, getMsUntilClose } from './api/restaurant';
+import { DEMO_PHONE, DEMO_RESTAURANT_INFO, DEMO_LOYALTY_BALANCE, DEMO_DISHES } from './constants/demo';
 import { fetchOrderById, ApiOrder } from './api/orders';
 import AddressBookScreen from './screens/AddressBookScreen';
 import AddressPickerScreen from './screens/AddressPickerScreen';
@@ -182,9 +183,16 @@ export default function App() {
           setAuthToken(token);
           setUserPhone(phone ?? '');
           setProfileName(name ?? '');
-          fetchRestaurantInfo(token).then(setRestaurantInfo).catch(() => {});
-          fetchFavorites(token).then(setFavorites).catch(() => {});
-          fetchAddresses(token).then(addrs => {
+          const isDemo = phone === DEMO_PHONE;
+          if (isDemo) {
+            setRestaurantInfo(DEMO_RESTAURANT_INFO);
+            setLoyaltyBalance(DEMO_LOYALTY_BALANCE);
+            setDishes(DEMO_DISHES);
+          } else {
+            fetchRestaurantInfo(token).then(setRestaurantInfo).catch(() => {});
+          }
+          if (!isDemo) fetchFavorites(token).then(setFavorites).catch(() => {});
+          if (!isDemo) fetchAddresses(token).then(addrs => {
             const displays = addrs.map(a => addressDisplay(a));
             const idMap: Record<string, string> = {};
             const labelMap: Record<string, string> = {};
@@ -195,6 +203,7 @@ export default function App() {
             if (displays.length > 0) setActiveAddress(displays[0]);
           }).catch(() => {});
           setScreen('home');
+          // (isDemo branch: no addresses/favorites needed)
         }
       } catch {}
     }).finally(() => setIsLoading(false));
@@ -218,13 +227,16 @@ export default function App() {
     AsyncStorage.setItem(ADDR_KEY, JSON.stringify({ addresses, addressIdMap, activeAddress }));
   }, [addresses, addressIdMap, activeAddress]);
 
+  const isDemoMode = userPhone === DEMO_PHONE;
+
   const refreshBalance = (token: string) => {
+    if (isDemoMode) return;
     setLoyaltyBalance(null);
     fetchLoyaltyBalance(token).then(b => setLoyaltyBalance(b.balance)).catch(() => {});
   };
 
   useEffect(() => {
-    if (!authToken) return;
+    if (!authToken || isDemoMode) return;
     refreshBalance(authToken);
   }, [authToken]);
 
@@ -243,29 +255,29 @@ export default function App() {
     return () => { if (closeTimerRef.current) clearTimeout(closeTimerRef.current); };
   }, [restaurantInfo]);
 
-  // Poll isTemporarilyClosed every 2 minutes
+  // Poll isTemporarilyClosed every 2 minutes (skip in demo)
   useEffect(() => {
-    if (!authToken) return;
+    if (!authToken || isDemoMode) return;
     const interval = setInterval(() => {
       fetchRestaurantInfo(authToken).then(setRestaurantInfo).catch(() => {});
     }, 2 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [authToken]);
+  }, [authToken, isDemoMode]);
 
-  // Refetch when app returns to foreground
+  // Refetch when app returns to foreground (skip in demo)
   useEffect(() => {
-    if (!authToken) return;
+    if (!authToken || isDemoMode) return;
     const sub = AppState.addEventListener('change', state => {
       if (state === 'active') {
         fetchRestaurantInfo(authToken).then(setRestaurantInfo).catch(() => {});
       }
     });
     return () => sub.remove();
-  }, [authToken]);
+  }, [authToken, isDemoMode]);
 
-  // Refetch restaurant info when entering cart screen
+  // Refetch restaurant info when entering cart screen (skip in demo)
   useEffect(() => {
-    if (screen === 'cart' && authToken) {
+    if (screen === 'cart' && authToken && !isDemoMode) {
       fetchRestaurantInfo(authToken).then(setRestaurantInfo).catch(() => {});
     }
   }, [screen]);
@@ -387,6 +399,7 @@ export default function App() {
       <BanquetMenuScreen
         dishes={dishes}
         authToken={authToken}
+        isDemoMode={isDemoMode}
         items={banquetItems}
         serviceChargePercent={restaurantInfo?.serviceChargePercent ?? 0}
         onUpdateQty={(index, qty) => {
@@ -435,8 +448,8 @@ export default function App() {
           setAddressIdMap(prev => { const n = { ...prev }; delete n[addr]; return n; });
           if (activeAddress === addr) setActiveAddress('');
         }}
-        onEdit={(addr) => { setEditingAddrDisplay(addr); setAddrReturn('addressBook'); setScreen('addressPicker'); }}
-        onAddNew={() => { setEditingAddrDisplay(null); setAddrReturn('addressBook'); setScreen('addressPicker'); }}
+        onEdit={(addr) => { setEditingAddrDisplay(addr); setScreen('addressPicker'); }}
+        onAddNew={() => { setEditingAddrDisplay(null); setScreen('addressPicker'); }}
         onBack={() => setScreen(addrReturn)}
       />
     );
@@ -471,7 +484,7 @@ export default function App() {
           setEditingAddrDisplay(null);
           setScreen(addrReturn);
         }}
-        onBack={() => { setEditingAddrDisplay(null); setScreen(addrReturn); }}
+        onBack={() => { setEditingAddrDisplay(null); setScreen('addressBook'); }}
       />
     );
   }
@@ -492,6 +505,8 @@ export default function App() {
         promoDiscount={cartPromoDiscount}
         cashbackPercent={restaurantInfo?.cashbackPercent}
         restaurantInfo={restaurantInfo}
+        isDemoMode={isDemoMode}
+        demoBalance={loyaltyBalance}
         onBack={() => setScreen('cart')}
         onSuccess={(deliveryType, payment, orderId, bonusesSpent, deliveryFee, promoDiscount) => {
           const total = subtotal + deliveryFee;
@@ -584,6 +599,7 @@ export default function App() {
           setScreen('reservationSuccess');
         }}
         authToken={authToken}
+        isDemoMode={isDemoMode}
       />
     );
   }
@@ -638,6 +654,7 @@ export default function App() {
         onOrderPress={(order) => { setSelectedOrder(order); setScreen('viewOrder'); }}
         authToken={authToken}
         dishes={dishes}
+        isDemoMode={isDemoMode}
       />
     );
   }
@@ -653,13 +670,15 @@ export default function App() {
     );
   }
   if (screen === 'announcements') {
-    return <AnnouncementsScreen onBack={() => setScreen('home')} />;
+    return <AnnouncementsScreen onBack={() => setScreen('home')} isDemoMode={isDemoMode} />;
   }
   if (screen === 'loyalty') {
     return (
       <LoyaltyScreen
         onBack={() => setScreen('profile')}
         authToken={authToken}
+        isDemoMode={isDemoMode}
+        demoBalance={loyaltyBalance}
       />
     );
   }
@@ -668,6 +687,7 @@ export default function App() {
       onBack={() => setScreen('profile')}
       authToken={authToken}
       onReservationPress={r => { setSelectedReserve(r); setScreen('reservationDetail'); }}
+      isDemoMode={isDemoMode}
     />;
   }
   if (screen === 'profile') {
@@ -726,6 +746,7 @@ export default function App() {
           onDishesLoaded={setDishes}
           restaurantInfo={restaurantInfo}
           isOpen={isOpen}
+          isDemoMode={isDemoMode}
           favorites={favorites}
           onToggleFavorite={toggleFavorite}
         />
@@ -746,21 +767,28 @@ export default function App() {
     setAuthToken(token);
     setUserPhone(phone);
     AsyncStorage.setItem(AUTH_KEY, JSON.stringify({ token, phone, name }));
-    fetchAddresses(token).then(addrs => {
-      const texts = addrs.map(a => addressDisplay(a));
-      const map: Record<string, string> = {};
-      const labelMap: Record<string, string> = {};
-      addrs.forEach(a => {
-        map[addressDisplay(a)] = a.id;
-        if (a.label) labelMap[addressDisplay(a)] = a.label;
-      });
-      setAddresses(texts);
-      setAddressIdMap(map);
-      setAddressLabelMap(labelMap);
-      if (texts.length > 0) setActiveAddress(texts[0]);
-    }).catch(() => {});
-    fetchRestaurantInfo(token).then(setRestaurantInfo).catch(() => {});
-    fetchFavorites(token).then(setFavorites).catch(() => {});
+    const isDemo = phone === DEMO_PHONE;
+    if (isDemo) {
+      setRestaurantInfo(DEMO_RESTAURANT_INFO);
+      setLoyaltyBalance(DEMO_LOYALTY_BALANCE);
+      setDishes(DEMO_DISHES);
+    } else {
+      fetchAddresses(token).then(addrs => {
+        const texts = addrs.map(a => addressDisplay(a));
+        const map: Record<string, string> = {};
+        const labelMap: Record<string, string> = {};
+        addrs.forEach(a => {
+          map[addressDisplay(a)] = a.id;
+          if (a.label) labelMap[addressDisplay(a)] = a.label;
+        });
+        setAddresses(texts);
+        setAddressIdMap(map);
+        setAddressLabelMap(labelMap);
+        if (texts.length > 0) setActiveAddress(texts[0]);
+      }).catch(() => {});
+      fetchRestaurantInfo(token).then(setRestaurantInfo).catch(() => {});
+      fetchFavorites(token).then(setFavorites).catch(() => {});
+    }
     setScreen('home');
   }} />;
 }

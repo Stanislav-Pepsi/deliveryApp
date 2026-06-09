@@ -96,9 +96,10 @@ interface Props {
   onBack: () => void;
   authToken: string | null;
   onReservationPress: (r: MappedReserve) => void;
+  isDemoMode?: boolean;
 }
 
-export default function ReservesScreen({ onBack, authToken, onReservationPress }: Props) {
+export default function ReservesScreen({ onBack, authToken, onReservationPress, isDemoMode }: Props) {
   const [reserves, setReserves]       = useState<MappedReserve[]>([]);
   const [loading, setLoading]         = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -106,6 +107,12 @@ export default function ReservesScreen({ onBack, authToken, onReservationPress }
   const pageRef = useRef(1);
 
   useEffect(() => {
+    if (isDemoMode) {
+      const { DEMO_RESERVES } = require('../constants/demo');
+      setReserves(DEMO_RESERVES);
+      setLoading(false);
+      return;
+    }
     if (!authToken) { setLoading(false); return; }
     fetchSections()
       .catch(() => {})
@@ -119,7 +126,7 @@ export default function ReservesScreen({ onBack, authToken, onReservationPress }
           .catch(() => {})
           .finally(() => setLoading(false));
       });
-  }, [authToken]);
+  }, [authToken, isDemoMode]);
 
   const loadMore = async () => {
     if (loadingMore || !hasMore || !authToken) return;

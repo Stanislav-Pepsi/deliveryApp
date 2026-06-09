@@ -51,6 +51,7 @@ interface Props {
   onOrderPress: (summary: OrderSummary) => void;
   authToken: string | null;
   dishes: DishData[];
+  isDemoMode?: boolean;
 }
 
 function formatDateTime(iso: string) {
@@ -61,30 +62,10 @@ function formatDateTime(iso: string) {
   return `${date} · ${time}`;
 }
 
-const MOCK_ORDER: ApiOrder = {
-  id: 'mock-001',
-  iikoNumber: 42,
-  orderType: 'DELIVERY',
-  status: 'DELIVERED',
-  paymentType: 'SCARD',
-  paymentStatus: 'PAID',
-  totalAmount: '4590',
-  bonusesSpent: null,
-  bonusesEarned: null,
-  items: [
-    { productId: '1', name: 'Салат Свежий', amount: 1, price: 2600 },
-    { productId: '2', name: 'Греческий салат', amount: 2, price: 990 },
-  ],
-  deliveryAddress: JSON.stringify({ streetName: 'ул. Абая', house: '10' }),
-  promoDiscount: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
-
 const LIMIT = 20;
 
-export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }: Props) {
-  const [orders, setOrders]       = useState<ApiOrder[]>([MOCK_ORDER]);
+export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes, isDemoMode }: Props) {
+  const [orders, setOrders]       = useState<ApiOrder[]>([]);
   const [loading, setLoading]     = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore]     = useState(false);
@@ -94,16 +75,21 @@ export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }
     if (!authToken) { setLoading(false); return; }
     try {
       const res = await fetchOrders(authToken, page, LIMIT);
-      const newOrders = page === 1 ? [MOCK_ORDER, ...res.data] : res.data;
-      setOrders(prev => append ? [...prev, ...res.data] : newOrders);
+      setOrders(prev => append ? [...prev, ...res.data] : res.data);
       setHasMore(page * LIMIT < res.total);
       pageRef.current = page;
     } catch {}
   };
 
   useEffect(() => {
+    if (isDemoMode) {
+      const { DEMO_ORDERS } = require('../constants/demo');
+      setOrders(DEMO_ORDERS);
+      setLoading(false);
+      return;
+    }
     loadOrders(1).finally(() => setLoading(false));
-  }, [authToken]);
+  }, [authToken, isDemoMode]);
 
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;
@@ -114,21 +100,21 @@ export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }
 
   // Polling — обновляем первую страницу каждые 15 секунд
   useEffect(() => {
-    if (!authToken) return;
+    if (isDemoMode || !authToken) return;
     const interval = setInterval(() => {
       fetchOrders(authToken, 1, LIMIT)
         .then(res => setOrders(prev => {
-          const fresh = [MOCK_ORDER, ...res.data];
+          const fresh = res.data;
           return pageRef.current > 1 ? [...fresh, ...prev.slice(fresh.length)] : fresh;
         }))
         .catch(() => {});
     }, 15000);
     return () => clearInterval(interval);
-  }, [authToken]);
+  }, [authToken, isDemoMode]);
 
   // WebSocket — мгновенное обновление статуса
   useEffect(() => {
-    if (!authToken) return;
+    if (isDemoMode || !authToken) return;
     const socket = io(`${WS_URL}/client`, {
       auth: { token: `Bearer ${authToken}` },
       transports: ['websocket'],
@@ -137,7 +123,7 @@ export default function OrdersScreen({ onBack, onOrderPress, authToken, dishes }
       setOrders(prev => prev.map(o => o.id === payload.orderId ? { ...o, status: payload.status } : o));
     });
     return () => { socket.disconnect(); };
-  }, [authToken]);
+  }, [authToken, isDemoMode]);
 
   const current = orders.filter(o => ACTIVE_STATUSES.has(o.status));
   const past    = orders.filter(o => !ACTIVE_STATUSES.has(o.status));

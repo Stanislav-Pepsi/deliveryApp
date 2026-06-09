@@ -36,24 +36,26 @@ interface Props {
   authToken: string | null;
   items: CartItem[];
   serviceChargePercent?: number;
+  isDemoMode?: boolean;
   onBack: () => void;
   onDishPress: (dish: DishData) => void;
   onUpdateQty: (index: number, qty: number) => void;
   onDone: () => void;
 }
 
-export default function BanquetMenuScreen({ dishes: initialDishes, authToken, items, serviceChargePercent = 0, onBack, onDishPress, onUpdateQty, onDone }: Props) {
+export default function BanquetMenuScreen({ dishes: initialDishes, authToken, items, serviceChargePercent = 0, isDemoMode, onBack, onDishPress, onUpdateQty, onDone }: Props) {
   const [activeCat, setActiveCat] = useState('all');
   const [cartOpen, setCartOpen] = useState(false);
   const [dishes, setDishes] = useState<DishData[]>(initialDishes);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (isDemoMode) { setLoading(false); return; }
     fetchMenu(authToken ?? '')
       .then(setDishes)
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, []);
+  }, [isDemoMode]);
 
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => { onBack(); return true; });

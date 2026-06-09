@@ -57,6 +57,7 @@ import { fetchMenu } from '../api/menu';
 import { ApiOrder, fetchOrders } from '../api/orders';
 import { Announcement, fetchAnnouncements } from '../api/announcements';
 import { io } from 'socket.io-client';
+import { DEMO_ACTIVE_ORDERS, DEMO_DISHES } from '../constants/demo';
 
 const WS_URL = 'https://nonvirulently-nonpursuant-georgie.ngrok-free.dev';
 import { OrderSummary } from './OrdersScreen';
@@ -84,11 +85,12 @@ interface Props {
   onDishesLoaded?: (dishes: DishData[]) => void;
   restaurantInfo?: RestaurantInfo | null;
   isOpen?: boolean;
+  isDemoMode?: boolean;
   favorites?: Set<string>;
   onToggleFavorite?: (id: string) => void;
 }
 
-export default function HomeScreen({ onDishPress, onCartPress, onReservationPress, onProfilePress, onOrderPress, onAddressPress, cartCount, address, authToken, onDishesLoaded, restaurantInfo, isOpen, favorites: favProp, onToggleFavorite: toggleFavProp }: Props) {
+export default function HomeScreen({ onDishPress, onCartPress, onReservationPress, onProfilePress, onOrderPress, onAddressPress, cartCount, address, authToken, onDishesLoaded, restaurantInfo, isOpen, isDemoMode, favorites: favProp, onToggleFavorite: toggleFavProp }: Props) {
   const [search, setSearch] = useState('');
   const [searchOpen, setSearchOpen] = useState(false);
   const [activeCat, setActiveCat] = useState('all');
@@ -153,32 +155,42 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
   const toggleFavorite = toggleFavProp ?? (() => {});
 
   useEffect(() => {
+    if (isDemoMode) {
+      setDishes(DEMO_DISHES);
+      onDishesLoaded?.(DEMO_DISHES);
+      setDishLoading(false);
+      return;
+    }
     if (!authToken) return;
     fetchMenu(authToken)
       .then(data => { setDishes(data); onDishesLoaded?.(data); })
       .catch(() => {})
       .finally(() => setDishLoading(false));
-  }, [authToken]);
+  }, [authToken, isDemoMode]);
 
   useEffect(() => {
+    if (isDemoMode) {
+      setActiveOrders(DEMO_ACTIVE_ORDERS.filter(o => ACTIVE_STATUSES.has(o.status)));
+      return;
+    }
     if (!authToken) return;
     fetchOrders(authToken, 1, 50)
       .then(res => setActiveOrders(res.data.filter(o => ACTIVE_STATUSES.has(o.status))))
       .catch(() => {});
-  }, [authToken]);
+  }, [authToken, isDemoMode]);
 
   useEffect(() => {
-    if (!authToken) return;
+    if (isDemoMode || !authToken) return;
     const interval = setInterval(() => {
       fetchOrders(authToken, 1, 50)
         .then(res => setActiveOrders(res.data.filter(o => ACTIVE_STATUSES.has(o.status))))
         .catch(() => {});
     }, 15000);
     return () => clearInterval(interval);
-  }, [authToken]);
+  }, [authToken, isDemoMode]);
 
   useEffect(() => {
-    if (!authToken) return;
+    if (isDemoMode || !authToken) return;
     const socket = io(`${WS_URL}/client`, {
       auth: { token: `Bearer ${authToken}` },
       transports: ['websocket'],
@@ -203,7 +215,7 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
       });
     });
     return () => { socket.disconnect(); };
-  }, [authToken]);
+  }, [authToken, isDemoMode]);
 
   const uniqueDishes = dishes.filter((d, i, arr) => arr.findIndex(x => x.id === d.id) === i);
   const catIds = ['all', ...Array.from(new Set(uniqueDishes.map(d => d.category).filter(Boolean)))];
@@ -412,7 +424,7 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
                   <View style={[styles.dishCard, unavailable && styles.dishCardUnavailable]}>
                     <View>
                       {d.img
-                        ? <Image source={d.img} style={[styles.dishImg, unavailable && { opacity: 0.35 }]} resizeMode="cover" />
+                        ? <Image source={typeof d.img === 'string' ? { uri: d.img } : d.img} style={[styles.dishImg, unavailable && { opacity: 0.35 }]} resizeMode="cover" />
                         : <View style={[styles.dishImg, { backgroundColor: 'rgba(255,255,255,0.04)' }, unavailable && { opacity: 0.35 }]} />
                       }
                       {unavailable && (
@@ -579,7 +591,7 @@ export default function HomeScreen({ onDishPress, onCartPress, onReservationPres
                   onPress={() => { if (!dishUnavailable) { closeSearch(); onDishPress(dish); } }}
                 >
                   {dish.img
-                    ? <Image source={dish.img} style={[styles.sheetDishImg, dishUnavailable && { opacity: 0.4 }]} resizeMode="cover" />
+                    ? <Image source={typeof dish.img === 'string' ? { uri: dish.img } : dish.img} style={[styles.sheetDishImg, dishUnavailable && { opacity: 0.4 }]} resizeMode="cover" />
                     : <View style={[styles.sheetDishImg, { backgroundColor: 'rgba(255,255,255,0.08)' }, dishUnavailable && { opacity: 0.4 }]} />
                   }
                   <View style={styles.sheetDishInfo}>

@@ -126,7 +126,7 @@ export default function DishDetailScreen({ dish, onBack, onAddToCart }: Props) {
       {/* Hero */}
       <View style={[styles.hero, { height: hasMultipleSizes ? H * 0.62 : H * 0.72 }]}>
         {dish.img
-          ? <Image source={dish.img} style={styles.heroImg} resizeMode="cover" />
+          ? <Image source={typeof dish.img === 'string' ? { uri: dish.img } : dish.img} style={styles.heroImg} resizeMode="cover" />
           : <View style={[styles.heroImg, { backgroundColor: '#1a2010' }]} />
         }
         <LinearGradient

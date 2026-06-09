@@ -20,6 +20,7 @@ const CARD  = 'rgba(255,255,255,0.06)';
 
 interface Props {
   onBack: () => void;
+  isDemoMode?: boolean;
 }
 
 function formatDate(iso: string) {
@@ -27,7 +28,7 @@ function formatDate(iso: string) {
   return `${String(d.getDate()).padStart(2,'0')}.${String(d.getMonth()+1).padStart(2,'0')}.${d.getFullYear()}`;
 }
 
-export default function AnnouncementsScreen({ onBack }: Props) {
+export default function AnnouncementsScreen({ onBack, isDemoMode }: Props) {
   const [items, setItems]       = useState<Announcement[]>([]);
   const [loading, setLoading]   = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -44,8 +45,9 @@ export default function AnnouncementsScreen({ onBack }: Props) {
   };
 
   useEffect(() => {
+    if (isDemoMode) { setLoading(false); return; }
     load(1).finally(() => setLoading(false));
-  }, []);
+  }, [isDemoMode]);
 
   const loadMore = async () => {
     if (loadingMore || !hasMore) return;

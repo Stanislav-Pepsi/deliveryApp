@@ -42,9 +42,11 @@ interface Props {
   promoDiscount?: number;
   cashbackPercent?: number | null;
   restaurantInfo?: RestaurantInfo | null;
+  isDemoMode?: boolean;
+  demoBalance?: number | null;
 }
 
-export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, addressId, onAddressPress, onBack, onSuccess, authToken, phone, cartItems, initialBonuses = 0, promoCode, promoDiscount = 0, cashbackPercent, restaurantInfo }: Props) {
+export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, addressId, onAddressPress, onBack, onSuccess, authToken, phone, cartItems, initialBonuses = 0, promoCode, promoDiscount = 0, cashbackPercent, restaurantInfo, isDemoMode, demoBalance }: Props) {
   const [deliveryType, setDeliveryType] = useState<'delivery' | 'pickup'>('delivery');
   const [timeType, setTimeType] = useState<'asap' | 'scheduled'>('asap');
   const [payment, setPayment] = useState<'kaspi' | 'cash'>('kaspi');
@@ -131,9 +133,10 @@ export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, a
   };
 
   useEffect(() => {
+    if (isDemoMode) { setLoyaltyBalance(demoBalance ?? 0); return; }
     if (!authToken) return;
     fetchLoyaltyBalance(authToken).then(b => setLoyaltyBalance(b.balance)).catch(() => {});
-  }, [authToken]);
+  }, [authToken, isDemoMode]);
 
   const deliveryFee = deliveryType === 'delivery' && deliveryFeeAmount ? deliveryFeeAmount : 0;
   const total = subtotal + deliveryFee;
@@ -153,6 +156,10 @@ export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, a
   const [submitError, setSubmitError] = useState('');
 
   const handleSubmit = async () => {
+    if (isDemoMode) {
+      onSuccess(deliveryType, payment, 'demo-order-' + Date.now(), bonusesToSpend, deliveryFee, promoDiscount);
+      return;
+    }
     if (!authToken) return;
     if (deliveryType === 'delivery' && !addressId) {
       setSubmitError('Адрес ещё сохраняется — подождите секунду и попробуйте снова.');

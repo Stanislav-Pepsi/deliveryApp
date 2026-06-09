@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import Text from '../components/Text';
 import { sendOtp, verifyOtp } from '../api/auth';
+import { DEMO_PHONE } from '../constants/demo';
 
 interface Props {
   onSuccess: (name: string, token: string, phone: string) => void;
@@ -50,6 +51,11 @@ export default function LoginScreen({ onSuccess }: Props) {
     if (!codeSent) {
       if (phone.replace(/\s/g, '').length < 10) {
         setError('Введите номер телефона');
+        return;
+      }
+      // Demo — bypass login entirely, no backend calls
+      if (rawPhone === DEMO_PHONE) {
+        onSuccess('Демо', 'DEMO_TOKEN', rawPhone);
         return;
       }
       setLoading(true);

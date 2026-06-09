@@ -1,12 +1,11 @@
-﻿import { Ionicons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import {
-  Animated,
   ActivityIndicator,
-  Keyboard,
-  PanResponder,
+  KeyboardAvoidingView,
   Platform,
+  ScrollView,
   StatusBar,
   StyleSheet,
   TextInput,
@@ -15,21 +14,12 @@ import {
 } from 'react-native';
 import Text from '../components/Text';
 import { AddressInput } from '../api/addresses';
-import MapView, { Region } from 'react-native-maps';
 
 const GREEN      = '#8DBB00';
 const GREEN_DARK = '#4a6600';
 const BG         = '#0c0f0a';
-const CARD       = 'rgba(255,255,255,0.08)';
-const BORDER     = 'rgba(255,255,255,0.12)';
-
-// Default: Almaty, Kazakhstan
-const DEFAULT_REGION: Region = {
-  latitude: 43.2220,
-  longitude: 76.8512,
-  latitudeDelta: 0.01,
-  longitudeDelta: 0.01,
-};
+const CARD       = 'rgba(255,255,255,0.07)';
+const BORDER     = 'rgba(255,255,255,0.1)';
 
 interface Props {
   initialAddress?: string;
@@ -39,91 +29,18 @@ interface Props {
 }
 
 export default function AddressPickerScreen({ initialAddress, initialLabel, onSave, onBack }: Props) {
-  const mapRef  = useRef<MapView>(null);
-  const [region, setRegion]         = useState<Region>(DEFAULT_REGION);
-  const [address, setAddress]       = useState(initialAddress ?? '');
-  const [label, setLabel]           = useState(initialLabel ?? '');
-  const [entrance, setEntrance]     = useState('');
-  const [apartment, setApartment]   = useState('');
-  const [floor, setFloor]           = useState('');
-  const [geocoding, setGeocoding]   = useState(false);
-  const [dragging, setDragging]     = useState(false);
-  const [permDenied, setPermDenied] = useState(false);
-  const [collapsed, setCollapsed]   = useState(false);
-  const [rawStreet, setRawStreet]   = useState('');
-  const [rawHouse, setRawHouse]     = useState('');
-  const [city, setCity]             = useState('');
-  const sheetBottom = useRef(new Animated.Value(0)).current;
-  const collapsedRef = useRef(collapsed);
-  useEffect(() => { collapsedRef.current = collapsed; }, [collapsed]);
-
-  // 1 = панель развёрнута, 0 = свёрнута — анимируется через JS (Animated),
-  // т.к. LayoutAnimation ненадёжен на Android с новой архитектурой RN
-  const expandAnim = useRef(new Animated.Value(1)).current;
-  const [contentHeight, setContentHeight] = useState<number | null>(null);
-
-  const toggleCollapsed = (next: boolean) => {
-    setCollapsed(next);
-    Animated.timing(expandAnim, {
-      toValue: next ? 0 : 1,
-      duration: 280,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  const sheetPanResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 12 && Math.abs(g.dy) > Math.abs(g.dx),
-      onPanResponderRelease: (_, g) => {
-        if (g.dy > 30 && !collapsedRef.current) toggleCollapsed(true);
-        else if (g.dy < -30 && collapsedRef.current) toggleCollapsed(false);
-      },
-    })
-  ).current;
-
-  useEffect(() => {
-    const showEv = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
-    const hideEv = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
-    const onShow = Keyboard.addListener(showEv, e => {
-      Animated.timing(sheetBottom, {
-        toValue: e.endCoordinates.height,
-        duration: Platform.OS === 'ios' ? (e.duration ?? 250) : 180,
-        useNativeDriver: false,
-      }).start();
-    });
-    const onHide = Keyboard.addListener(hideEv, e => {
-      Animated.timing(sheetBottom, {
-        toValue: 0,
-        duration: Platform.OS === 'ios' ? (e.duration ?? 250) : 180,
-        useNativeDriver: false,
-      }).start();
-    });
-    return () => { onShow.remove(); onHide.remove(); };
-  }, []);
-
-  useEffect(() => {
-    (async () => {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') { setPermDenied(true); return; }
-      try {
-        const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-        const r: Region = {
-          latitude: loc.coords.latitude,
-          longitude: loc.coords.longitude,
-          latitudeDelta: 0.008,
-          longitudeDelta: 0.008,
-        };
-        setRegion(r);
-        mapRef.current?.animateToRegion(r, 600);
-        reverseGeocode(loc.coords.latitude, loc.coords.longitude);
-      } catch {
-        reverseGeocode(DEFAULT_REGION.latitude, DEFAULT_REGION.longitude);
-      }
-    })();
-  }, []);
+  const [address,   setAddress]   = useState(initialAddress ?? '');
+  const [label,     setLabel]     = useState(initialLabel ?? '');
+  const [entrance,  setEntrance]  = useState('');
+  const [apartment, setApartment] = useState('');
+  const [floor,     setFloor]     = useState('');
+  const [locating,  setLocating]  = useState(false);
+  const [geocoding, setGeocoding] = useState(false);
+  const [rawStreet, setRawStreet] = useState('');
+  const [rawHouse,  setRawHouse]  = useState('');
+  const [city,      setCity]      = useState('');
 
   const reverseGeocode = async (lat: number, lon: number) => {
-    setGeocoding(true);
     try {
       const results = await Location.reverseGeocodeAsync({ latitude: lat, longitude: lon });
       if (results.length > 0) {
@@ -134,18 +51,24 @@ export default function AddressPickerScreen({ initialAddress, initialLabel, onSa
         const parts = [r.street, r.streetNumber, r.city].filter(Boolean);
         if (parts.length > 0) setAddress(parts.join(', '));
       }
-    } catch {
-      // keep current address
-    } finally {
-      setGeocoding(false);
+    } catch {}
+  };
+
+  const useMyLocation = async () => {
+    setLocating(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') return;
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      await reverseGeocode(loc.coords.latitude, loc.coords.longitude);
+    } catch {} finally {
+      setLocating(false);
     }
   };
 
-  const forwardGeocode = async (query: string) => {
-    const trimmed = query.trim();
+  const findByAddress = async () => {
+    const trimmed = address.trim();
     if (!trimmed) return;
-    // Привязываем поиск к текущему городу пользователя, чтобы не находило
-    // одноимённые улицы в других городах
     const biased = city && !trimmed.toLowerCase().includes(city.toLowerCase())
       ? `${trimmed}, ${city}`
       : trimmed;
@@ -153,38 +76,11 @@ export default function AddressPickerScreen({ initialAddress, initialLabel, onSa
     try {
       const results = await Location.geocodeAsync(biased);
       if (results.length > 0) {
-        const { latitude, longitude } = results[0];
-        const r: Region = { latitude, longitude, latitudeDelta: 0.008, longitudeDelta: 0.008 };
-        setRegion(r);
-        mapRef.current?.animateToRegion(r, 600);
-        reverseGeocode(latitude, longitude);
+        await reverseGeocode(results[0].latitude, results[0].longitude);
       }
-    } catch {
-      // keep current address
-    } finally {
+    } catch {} finally {
       setGeocoding(false);
     }
-  };
-
-  const goToMyLocation = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') return;
-    const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    const r: Region = {
-      latitude: loc.coords.latitude,
-      longitude: loc.coords.longitude,
-      latitudeDelta: 0.008,
-      longitudeDelta: 0.008,
-    };
-    setRegion(r);
-    mapRef.current?.animateToRegion(r, 500);
-    reverseGeocode(loc.coords.latitude, loc.coords.longitude);
-  };
-
-  const handleRegionChangeComplete = (r: Region) => {
-    setRegion(r);
-    setDragging(false);
-    reverseGeocode(r.latitude, r.longitude);
   };
 
   const handleSave = () => {
@@ -196,7 +92,6 @@ export default function AddressPickerScreen({ initialAddress, initialLabel, onSa
       return i === -1 ? '' : trimmed.substring(i + 1);
     })();
 
-    const houseVal = house.trim() || rawHouse;
     const details = [
       entrance.trim()  ? `под. ${entrance.trim()}`  : '',
       floor.trim()     ? `этаж ${floor.trim()}`     : '',
@@ -207,7 +102,7 @@ export default function AddressPickerScreen({ initialAddress, initialLabel, onSa
     onSave(
       {
         street,
-        house: houseVal,
+        house: house.trim() || rawHouse,
         apartment: apartment.trim() || undefined,
         entrance:  entrance.trim()  || undefined,
         floor:     floor.trim()     || undefined,
@@ -219,247 +114,207 @@ export default function AddressPickerScreen({ initialAddress, initialLabel, onSa
 
   return (
     <View style={styles.root}>
-      <StatusBar barStyle="dark-content" backgroundColor="transparent" translucent />
+      <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
-      {/* Map */}
-      <MapView
-        ref={mapRef}
-        style={styles.map}
-        initialRegion={region}
-        onRegionChange={() => { setDragging(true); }}
-        onRegionChangeComplete={handleRegionChangeComplete}
-        showsUserLocation
-        showsMyLocationButton={false}
-      />
-
-      {/* Centred pin */}
-      <View pointerEvents="none" style={styles.pinContainer}>
-        <Ionicons
-          name="location"
-          size={48}
-          color={GREEN}
-          style={[styles.pinIcon, dragging && styles.pinIconLifted]}
-        />
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.8}>
+          <Ionicons name="chevron-back" size={22} color="#fff" />
+        </TouchableOpacity>
+        <View style={{ flex: 1, marginLeft: 12 }}>
+          <Text style={styles.headerSub}>ДОСТАВКА</Text>
+          <Text style={styles.headerTitle}>Адрес доставки</Text>
+        </View>
       </View>
 
-      {/* Back button */}
-      <TouchableOpacity style={styles.backBtn} onPress={onBack} activeOpacity={0.85}>
-        <Ionicons name="chevron-back" size={22} color="#fff" />
-      </TouchableOpacity>
-
-      {/* My location button */}
-      <TouchableOpacity style={styles.locBtn} onPress={goToMyLocation} activeOpacity={0.85}>
-        <Ionicons name="locate-outline" size={22} color="#fff" />
-      </TouchableOpacity>
-
-      {/* Bottom sheet */}
-      <Animated.View style={[styles.sheet, { bottom: sheetBottom }]}>
-        <View {...sheetPanResponder.panHandlers}>
-          <View style={styles.handle} />
-
-          {collapsed ? (
-            <Text style={styles.collapsedSummary} numberOfLines={1}>
-              {address.trim() || 'Укажите адрес'}
-            </Text>
-          ) : (
-            <Text style={styles.sheetTitle}>Укажите адрес</Text>
-          )}
-        </View>
-
-        <Animated.View
-          style={{
-            overflow: 'hidden',
-            opacity: expandAnim,
-            height: contentHeight === null
-              ? undefined
-              : expandAnim.interpolate({ inputRange: [0, 1], outputRange: [0, contentHeight] }),
-          }}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        keyboardVerticalOffset={0}
+      >
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
-        <View
-          onLayout={(e) => {
-            const h = e.nativeEvent.layout.height;
-            if (!collapsedRef.current && h > 0 && h !== contentHeight) setContentHeight(h);
-          }}
-        >
-        {/* Название точки */}
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.input}
-            value={label}
-            onChangeText={setLabel}
-            placeholder="Введите название адреса"
-            placeholderTextColor="rgba(255,255,255,0.3)"
-            returnKeyType="next"
-            selectionColor={GREEN}
-          />
-        </View>
+          {/* My location */}
+          <TouchableOpacity style={styles.locBtn} onPress={useMyLocation} activeOpacity={0.8} disabled={locating}>
+            {locating
+              ? <ActivityIndicator size="small" color={GREEN} />
+              : <Ionicons name="locate-outline" size={18} color={GREEN} />
+            }
+            <Text style={styles.locBtnTxt}>Определить моё местоположение</Text>
+          </TouchableOpacity>
 
-        {/* Address input */}
-        <View style={styles.inputRow}>
-          <Ionicons name="location-outline" size={20} color={GREEN} style={{ marginRight: 10 }} />
-          <TextInput
-            style={styles.input}
-            value={address}
-            onChangeText={setAddress}
-            placeholder="Введите адрес вручную"
-            placeholderTextColor="rgba(255,255,255,0.3)"
-            returnKeyType="done"
-            onSubmitEditing={() => Keyboard.dismiss()}
-            selectionColor={GREEN}
-          />
-          {geocoding && <ActivityIndicator size="small" color={GREEN} style={{ marginLeft: 8 }} />}
+          <Text style={styles.sectionLabel}>НАЗВАНИЕ АДРЕСА</Text>
+          <View style={styles.inputBox}>
+            <TextInput
+              style={styles.input}
+              value={label}
+              onChangeText={setLabel}
+              placeholder="Дом, Работа..."
+              placeholderTextColor="rgba(255,255,255,0.25)"
+              returnKeyType="next"
+              selectionColor={GREEN}
+            />
+          </View>
+
+          <Text style={styles.sectionLabel}>УЛИЦА И ДОМ</Text>
+          <View style={[styles.inputBox, styles.inputBoxRow]}>
+            <Ionicons name="location-outline" size={18} color={GREEN} style={{ marginRight: 8 }} />
+            <TextInput
+              style={[styles.input, { flex: 1 }]}
+              value={address}
+              onChangeText={setAddress}
+              placeholder="Введите адрес"
+              placeholderTextColor="rgba(255,255,255,0.25)"
+              returnKeyType="search"
+              onSubmitEditing={findByAddress}
+              selectionColor={GREEN}
+            />
+            {geocoding
+              ? <ActivityIndicator size="small" color={GREEN} style={{ marginLeft: 8 }} />
+              : (
+                <TouchableOpacity
+                  style={[styles.findBtn, !address.trim() && { opacity: 0.4 }]}
+                  onPress={findByAddress}
+                  disabled={!address.trim()}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.findBtnTxt}>Найти</Text>
+                </TouchableOpacity>
+              )
+            }
+          </View>
+
+          <Text style={styles.sectionLabel}>ДЕТАЛИ</Text>
+          <View style={styles.detailsRow}>
+            <View style={[styles.detailBox, { flex: 1 }]}>
+              <Text style={styles.detailLabel}>Подъезд</Text>
+              <TextInput
+                style={styles.detailInput}
+                value={entrance}
+                onChangeText={setEntrance}
+                placeholder="—"
+                placeholderTextColor="rgba(255,255,255,0.2)"
+                keyboardType="numeric"
+                selectionColor={GREEN}
+                textAlign="center"
+              />
+            </View>
+            <View style={[styles.detailBox, { flex: 1 }]}>
+              <Text style={styles.detailLabel}>Этаж</Text>
+              <TextInput
+                style={styles.detailInput}
+                value={floor}
+                onChangeText={setFloor}
+                placeholder="—"
+                placeholderTextColor="rgba(255,255,255,0.2)"
+                keyboardType="numeric"
+                selectionColor={GREEN}
+                textAlign="center"
+              />
+            </View>
+            <View style={[styles.detailBox, { flex: 1 }]}>
+              <Text style={styles.detailLabel}>Квартира</Text>
+              <TextInput
+                style={styles.detailInput}
+                value={apartment}
+                onChangeText={setApartment}
+                placeholder="—"
+                placeholderTextColor="rgba(255,255,255,0.2)"
+                keyboardType="numeric"
+                selectionColor={GREEN}
+                textAlign="center"
+              />
+            </View>
+          </View>
+
+          <View style={{ height: 24 }} />
+        </ScrollView>
+
+        <View style={styles.bottom}>
           <TouchableOpacity
-            style={[styles.findInlineBtn, !address.trim() && styles.findBtnDisabled]}
-            onPress={() => { Keyboard.dismiss(); forwardGeocode(address); }}
+            style={[styles.saveBtn, !address.trim() && styles.saveBtnDisabled]}
+            onPress={handleSave}
             activeOpacity={0.85}
             disabled={!address.trim()}
           >
-            <Text style={styles.findBtnTxt}>Найти</Text>
+            <Text style={styles.saveBtnTxt}>Сохранить адрес</Text>
           </TouchableOpacity>
         </View>
-
-        {/* Детали адреса */}
-        <View style={styles.detailsRow}>
-          <View style={[styles.detailField, { flex: 1, minWidth: 0 }]}>
-            <Text style={styles.detailLabel}>Подъезд</Text>
-            <TextInput
-              style={styles.detailInput}
-              value={entrance}
-              onChangeText={setEntrance}
-              placeholder="—"
-              placeholderTextColor="rgba(255,255,255,0.25)"
-              keyboardType="numeric"
-              returnKeyType="next"
-              selectionColor={GREEN}
-            />
-          </View>
-          <View style={[styles.detailField, { flex: 1, minWidth: 0 }]}>
-            <Text style={styles.detailLabel}>Этаж</Text>
-            <TextInput
-              style={styles.detailInput}
-              value={floor}
-              onChangeText={setFloor}
-              placeholder="—"
-              placeholderTextColor="rgba(255,255,255,0.25)"
-              keyboardType="numeric"
-              returnKeyType="next"
-              selectionColor={GREEN}
-            />
-          </View>
-          <View style={[styles.detailField, { flex: 1, minWidth: 0 }]}>
-            <Text style={styles.detailLabel}>Квартира</Text>
-            <TextInput
-              style={styles.detailInput}
-              value={apartment}
-              onChangeText={setApartment}
-              placeholder="—"
-              placeholderTextColor="rgba(255,255,255,0.25)"
-              keyboardType="numeric"
-              returnKeyType="next"
-              selectionColor={GREEN}
-            />
-          </View>
-        </View>
-
-        {permDenied && (
-          <Text style={styles.permNote}>
-            Разрешение на геолокацию не выдано — двигайте карту вручную.
-          </Text>
-        )}
-        </View>
-        </Animated.View>
-
-        <TouchableOpacity
-          style={[styles.saveBtn, !address.trim() && styles.saveBtnDisabled]}
-          onPress={handleSave}
-          activeOpacity={0.85}
-          disabled={!address.trim()}
-        >
-          <Text style={styles.saveBtnTxt}>Сохранить адрес</Text>
-        </TouchableOpacity>
-
-        <View style={{ height: Platform.OS === 'android' ? 60 : 36 }} />
-      </Animated.View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1 },
-  map:  { flex: 1 },
+  root: { flex: 1, backgroundColor: BG },
 
-  pinContainer: {
-    position: 'absolute',
-    top: 0, left: 0, right: 0, bottom: 0,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  pinIcon:       { marginTop: -48 },
-  pinIconLifted: { transform: [{ translateY: -10 }] },
-
-  backBtn: {
-    position: 'absolute', top: 52, left: 20,
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: 'rgba(12,15,10,0.8)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  locBtn: {
-    position: 'absolute', top: 52, right: 20,
-    width: 42, height: 42, borderRadius: 21,
-    backgroundColor: 'rgba(12,15,10,0.8)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-
-  sheet: {
-    position: 'absolute', left: 0, right: 0,
-    backgroundColor: BG,
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    paddingHorizontal: 24, paddingTop: 10,
-    borderTopWidth: 1, borderTopColor: BORDER,
-  },
-  handle:     { width: 40, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.2)', alignSelf: 'center', marginBottom: 18 },
-  sheetTitle: { color: '#fff', fontSize: 17, fontWeight: '700', marginBottom: 16, textAlign: 'center' },
-  collapsedSummary: { color: 'rgba(255,255,255,0.6)', fontSize: 14, marginBottom: 16, textAlign: 'center' },
-
-  inputRow: {
+  header: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: CARD, borderRadius: 14,
-    paddingHorizontal: 14, paddingVertical: 2,
-    marginBottom: 12,
+    paddingTop: 56, paddingBottom: 16, paddingHorizontal: 20,
   },
-  input: { flex: 1, color: '#fff', fontSize: 15, paddingVertical: 14 },
+  backBtn: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+    alignItems: 'center', justifyContent: 'center',
+  },
+  headerSub:   { color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '700', letterSpacing: 1.5, marginBottom: 3 },
+  headerTitle: { color: '#fff', fontSize: 24, fontWeight: '800' },
 
-  detailsRow: {
-    flexDirection: 'row', gap: 8, marginBottom: 16,
+  scroll: { paddingHorizontal: 20, paddingTop: 4 },
+
+  locBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+    backgroundColor: 'rgba(141,187,0,0.1)',
+    borderWidth: 1, borderColor: GREEN_DARK,
+    borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14,
+    marginBottom: 24,
   },
-  detailField: {
-    backgroundColor: CARD, borderRadius: 12,
-    paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4,
+  locBtnTxt: { color: GREEN, fontSize: 14, fontWeight: '600' },
+
+  sectionLabel: {
+    color: 'rgba(255,255,255,0.35)', fontSize: 11, fontWeight: '700',
+    letterSpacing: 1.5, marginBottom: 10,
+  },
+
+  inputBox: {
+    backgroundColor: CARD, borderRadius: 14,
+    borderWidth: 1, borderColor: BORDER,
+    paddingHorizontal: 16, paddingVertical: 2,
+    marginBottom: 20,
+  },
+  inputBoxRow: {
+    flexDirection: 'row', alignItems: 'center',
+  },
+  input: { color: '#fff', fontSize: 15, paddingVertical: 14 },
+
+  findBtn: {
+    backgroundColor: 'rgba(141,187,0,0.12)',
+    borderRadius: 20, paddingHorizontal: 12, paddingVertical: 8,
+    marginLeft: 8,
+  },
+  findBtnTxt: { color: GREEN, fontSize: 13, fontWeight: '700' },
+
+  detailsRow: { flexDirection: 'row', gap: 8, marginBottom: 8 },
+  detailBox: {
+    backgroundColor: CARD, borderRadius: 14,
+    borderWidth: 1, borderColor: BORDER,
+    paddingHorizontal: 8, paddingTop: 10, paddingBottom: 8,
     alignItems: 'center',
   },
   detailLabel: {
     color: 'rgba(255,255,255,0.35)', fontSize: 10,
-    fontWeight: '700', letterSpacing: 0.8, marginBottom: 2,
-    textAlign: 'center',
+    fontWeight: '700', letterSpacing: 0.8, marginBottom: 4,
   },
-  detailInput: {
-    color: '#fff', fontSize: 15, paddingVertical: 6,
-    textAlign: 'center',
-  },
+  detailInput: { color: '#fff', fontSize: 16, paddingVertical: 4, width: '100%' },
 
-  permNote: {
-    color: 'rgba(255,255,255,0.4)', fontSize: 12,
-    marginBottom: 12, lineHeight: 18,
+  bottom: {
+    paddingHorizontal: 20, paddingBottom: Platform.OS === 'android' ? 32 : 24, paddingTop: 12,
+    borderTopWidth: 1, borderTopColor: BORDER,
+    backgroundColor: BG,
   },
-
-  findInlineBtn: {
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(141,187,0,0.12)', borderRadius: 20,
-    paddingHorizontal: 12, paddingVertical: 8, marginLeft: 8,
-  },
-  findBtnDisabled: { opacity: 0.4 },
-  findBtnTxt:      { color: GREEN, fontSize: 13, fontWeight: '700' },
-
-  saveBtn:         { backgroundColor: '#8DBB00', borderRadius: 30, paddingVertical: 18, alignItems: 'center' },
+  saveBtn:         { backgroundColor: GREEN, borderRadius: 30, paddingVertical: 18, alignItems: 'center' },
   saveBtnDisabled: { opacity: 0.4 },
   saveBtnTxt:      { color: '#fff', fontSize: 17, fontWeight: '700' },
 });

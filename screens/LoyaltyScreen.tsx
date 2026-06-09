@@ -35,9 +35,11 @@ function formatDate(iso: string) {
 interface Props {
   onBack: () => void;
   authToken: string | null;
+  isDemoMode?: boolean;
+  demoBalance?: number | null;
 }
 
-export default function LoyaltyScreen({ onBack, authToken }: Props) {
+export default function LoyaltyScreen({ onBack, authToken, isDemoMode, demoBalance }: Props) {
   const [balance, setBalance]           = useState<LoyaltyBalance | null>(null);
   const [transactions, setTransactions] = useState<LoyaltyTransaction[]>([]);
   const [loading, setLoading]           = useState(true);
@@ -46,6 +48,11 @@ export default function LoyaltyScreen({ onBack, authToken }: Props) {
   const pageRef = useRef(1);
 
   useEffect(() => {
+    if (isDemoMode) {
+      setBalance({ balance: demoBalance ?? 0, cashbackPercent: 10 } as any);
+      setLoading(false);
+      return;
+    }
     if (!authToken) { setLoading(false); return; }
     Promise.all([
       fetchLoyaltyBalance(authToken),
@@ -59,10 +66,10 @@ export default function LoyaltyScreen({ onBack, authToken }: Props) {
       })
       .catch(() => {})
       .finally(() => setLoading(false));
-  }, [authToken]);
+  }, [authToken, isDemoMode]);
 
   const loadMore = async () => {
-    if (loadingMore || !hasMore || !authToken) return;
+    if (loadingMore || !hasMore || !authToken || isDemoMode) return;
     setLoadingMore(true);
     try {
       const nextPage = pageRef.current + 1;

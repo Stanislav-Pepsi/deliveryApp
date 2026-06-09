@@ -135,7 +135,7 @@ export default function CartScreen({ items, dishes, onUpdateQty, onBack, onCheck
               return (
                 <View key={`${item.dish.id}-${item.size}`} style={[styles.itemCard, itemUnavailable && styles.itemCardUnavailable]}>
                   {item.dish.img
-                    ? <Image source={item.dish.img} style={[styles.itemImg, itemUnavailable && { opacity: 0.4 }]} resizeMode="cover" />
+                    ? <Image source={typeof item.dish.img === 'string' ? { uri: item.dish.img } : item.dish.img} style={[styles.itemImg, itemUnavailable && { opacity: 0.4 }]} resizeMode="cover" />
                     : <View style={[styles.itemImg, { backgroundColor: '#1a2010' }, itemUnavailable && { opacity: 0.4 }]} />
                   }
                   <View style={styles.itemInfo}>

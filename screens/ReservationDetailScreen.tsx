@@ -9,6 +9,7 @@ import {
   Alert,
   Animated,
   BackHandler,
+  Linking,
   Modal,
   ScrollView,
   StatusBar,
@@ -231,6 +232,16 @@ export default function ReservationDetailScreen({ reserve, authToken, restaurant
       </ScrollView>
 
       <Animated.View style={[styles.bottomBar, { opacity: fadeAnim }]}>
+        {!!restaurantInfo?.phone && (
+          <TouchableOpacity
+            style={styles.callBtn}
+            activeOpacity={0.85}
+            onPress={() => Linking.openURL(`tel:${restaurantInfo!.phone}`)}
+          >
+            <Ionicons name="call-outline" size={18} color={GREEN} />
+            <Text style={styles.callBtnTxt}>Позвонить в ресторан</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.85} onPress={onBack}>
           <Text style={styles.primaryBtnTxt}>Назад</Text>
         </TouchableOpacity>
@@ -278,6 +289,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16, paddingTop: 12, paddingBottom: 46, gap: 10,
     backgroundColor: 'rgba(12,15,10,0.97)',
   },
+  callBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: 'rgba(141,187,0,0.1)',
+    borderRadius: 30, paddingVertical: 16,
+    borderWidth: 1, borderColor: GREEN,
+  },
+  callBtnTxt: { color: GREEN, fontSize: 16, fontWeight: '700' },
   primaryBtn: {
     backgroundColor: GREEN, borderRadius: 30, paddingVertical: 18,
     alignItems: 'center',

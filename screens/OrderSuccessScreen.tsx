@@ -7,6 +7,7 @@ import {
   Alert,
   Animated,
   BackHandler,
+  Linking,
   Modal,
   ScrollView,
   StatusBar,
@@ -516,6 +517,16 @@ export default function OrderSuccessScreen({ total, bonusesSpent, promoDiscount,
 
         {/* Buttons */}
         <Animated.View style={[styles.btns, { opacity: fadeAnim }]}>
+          {!!restaurantInfo?.phone && (
+            <TouchableOpacity
+              style={styles.callBtn}
+              activeOpacity={0.85}
+              onPress={() => Linking.openURL(`tel:${restaurantInfo!.phone}`)}
+            >
+              <Ionicons name="call-outline" size={18} color={GREEN} />
+              <Text style={styles.callBtnTxt}>Позвонить в ресторан</Text>
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.primaryBtn} activeOpacity={0.85} onPress={onGoHome}>
             <Text style={styles.primaryBtnTxt}>Вернуться</Text>
           </TouchableOpacity>
@@ -667,6 +678,13 @@ const styles = StyleSheet.create({
   itemPrice: { color: '#fff', fontSize: 14, fontWeight: '700', minWidth: 80, textAlign: 'right' },
 
   btns: { width: '100%', gap: 12 },
+  callBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: 'rgba(141,187,0,0.1)',
+    borderRadius: 30, paddingVertical: 16,
+    borderWidth: 1, borderColor: GREEN,
+  },
+  callBtnTxt: { color: GREEN, fontSize: 16, fontWeight: '700' },
   primaryBtn: {
     backgroundColor: GREEN,
     borderRadius: 30, paddingVertical: 18,

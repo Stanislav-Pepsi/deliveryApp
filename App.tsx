@@ -742,6 +742,7 @@ export default function App() {
         onReservesPress={() => setScreen('reserves')}
         onAddressPress={() => { setAddrReturn('profile'); setScreen('addressBook'); }}
         address={activeAddress}
+        restaurantInfo={restaurantInfo}
       />
     );
   }

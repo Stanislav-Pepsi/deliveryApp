@@ -40,19 +40,15 @@ export async function deleteAccount(token: string): Promise<void> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   try {
-    console.log('[deleteAccount] sending DELETE', `${BASE_URL}/auth/account`);
     const res = await fetch(`${BASE_URL}/auth/account`, {
       method: 'DELETE',
       headers: baseHeaders(token),
       signal: controller.signal,
     });
-    console.log('[deleteAccount] status', res.status);
-    // 401 = token expired or already deleted — treat as logged out
-    if (res.status === 401) return;
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      throw new Error(data.message || `Ошибка ${res.status}`);
-    }
+    if (res.ok) return;
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 401) throw new Error('Сессия истекла. Выйдите и войдите заново, затем повторите удаление.');
+    throw new Error(data.message || `Ошибка сервера (${res.status})`);
   } catch (e: any) {
     if (e.name === 'AbortError') throw new Error('Нет ответа от сервера (таймаут)');
     throw e;

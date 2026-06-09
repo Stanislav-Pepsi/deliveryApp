@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Starten",
-    "slug": "starten",
+    "slug": "basilic",
     "version": "1.0.8",
     "orientation": "portrait",
     "icon": "./assets/star10_logo.png",
@@ -37,6 +37,7 @@
       "eas": {
         "projectId": "cd173121-4118-48ed-8fe4-b543c2e8de60"
       }
-    }
+    },
+    "owner": "stanislav_pepsi"
   }
 }

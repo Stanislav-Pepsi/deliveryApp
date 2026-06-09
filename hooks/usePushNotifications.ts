@@ -72,7 +72,7 @@ export function usePushNotifications(
 
     setup().catch(() => {});
 
-    // Suppress foreground notifications — shown only when app is in background/terminated
+    // Suppress foreground notifications — app handles updates via real-time state
     const unsubFg = onMessage(messaging, async () => {});
 
     return () => {

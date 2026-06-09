@@ -7,11 +7,7 @@ export async function registerDeviceToken(
 ): Promise<void> {
   await fetch(`${BASE_URL}/device-tokens`, {
     method: 'POST',
-    headers: {
-      ...baseHeaders(),
-      Authorization: `Bearer ${authToken}`,
-      'Content-Type': 'application/json',
-    },
+    headers: baseHeaders(authToken),
     body: JSON.stringify({ token, platform }),
   });
 }
@@ -19,9 +15,6 @@ export async function registerDeviceToken(
 export async function unregisterDeviceToken(token: string, authToken: string): Promise<void> {
   await fetch(`${BASE_URL}/device-tokens/${encodeURIComponent(token)}`, {
     method: 'DELETE',
-    headers: {
-      ...baseHeaders(),
-      Authorization: `Bearer ${authToken}`,
-    },
+    headers: baseHeaders(authToken),
   });
 }

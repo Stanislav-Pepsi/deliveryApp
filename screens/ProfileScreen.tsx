@@ -3,6 +3,7 @@ import { BlurView } from 'expo-blur';
 import { useState } from 'react';
 import {
   ActivityIndicator,
+  Linking,
   Modal,
   ScrollView,
   StatusBar,
@@ -12,6 +13,7 @@ import {
   View,
 } from 'react-native';
 import Text from '../components/Text';
+import { RestaurantInfo } from '../api/restaurant';
 
 const GREEN      = '#8DBB00';
 const GREEN_DARK = '#4a6600';
@@ -55,12 +57,13 @@ interface Props {
   address?: string;
   phone?: string;
   loyaltyBalance?: number | null;
+  restaurantInfo?: RestaurantInfo | null;
 }
 
 export default function ProfileScreen({
   name, onNameChange, onNameSave, cartCount, authToken, onGoHome, onReservationPress, onCartPress, onLogout,
   onDeleteAccount, onOrdersPress, onReservesPress, onAddressPress, onLoyaltyPress, onFavoritesPress,
-  address, phone, loyaltyBalance,
+  address, phone, loyaltyBalance, restaurantInfo,
 }: Props) {
   const [editOpen,          setEditOpen]          = useState(false);
   const [draft,             setDraft]             = useState('');
@@ -119,6 +122,18 @@ export default function ProfileScreen({
           <Ionicons name="chevron-forward" size={17} color="rgba(255,255,255,0.2)" />
         </TouchableOpacity>
 
+        {/* Restaurant phone */}
+        {!!restaurantInfo?.phone && (
+          <TouchableOpacity
+            style={styles.callBtn}
+            activeOpacity={0.8}
+            onPress={() => Linking.openURL(`tel:${restaurantInfo!.phone}`)}
+          >
+            <Ionicons name="call-outline" size={18} color={GREEN} />
+            <Text style={styles.callBtnTxt}>Позвонить в ресторан</Text>
+          </TouchableOpacity>
+        )}
+
         {/* Menu */}
         <View style={styles.menuCard}>
           {MENU.map((item, idx) => {
@@ -160,7 +175,17 @@ export default function ProfileScreen({
           <Text style={styles.deleteTxt}>Удалить аккаунт</Text>
         </TouchableOpacity>
 
-        <View style={{ height: 110 }} />
+        {/* Privacy policy */}
+        <TouchableOpacity
+          style={styles.privacyRow}
+          activeOpacity={0.7}
+          onPress={() => Linking.openURL('https://osadokpepla.github.io/privacy/privacy_policy.html')}
+        >
+          <Ionicons name="shield-checkmark-outline" size={15} color="rgba(255,255,255,0.25)" />
+          <Text style={styles.privacyTxt}>Политика конфиденциальности</Text>
+        </TouchableOpacity>
+
+        <View style={{ height: 160 }} />
       </ScrollView>
 
       {/* Bottom nav */}
@@ -317,8 +342,17 @@ const styles = StyleSheet.create({
   loyaltyLabel: { color: 'rgba(255,255,255,0.4)', fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
   loyaltyVal:   { color: '#fff', fontSize: 16, fontWeight: '700', marginTop: 2 },
 
+  callBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: 'rgba(141,187,0,0.1)',
+    borderRadius: 18, paddingVertical: 16,
+    borderWidth: 1, borderColor: GREEN,
+    marginBottom: 12,
+  },
+  callBtnTxt: { color: GREEN, fontSize: 15, fontWeight: '700' },
+
   menuCard: {
-    backgroundColor: CARD, borderRadius: 18,
+    backgroundColor: '#1e2419', borderRadius: 18,
     marginBottom: 12, overflow: 'hidden',
   },
   menuRow:        { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 14 },
@@ -378,4 +412,7 @@ const styles = StyleSheet.create({
   },
   confirmBtnGhostTxt: { color: 'rgba(255,255,255,0.55)', fontSize: 16, fontWeight: '600' },
   deleteErrorTxt: { color: RED, fontSize: 13, textAlign: 'center', marginBottom: 12, marginTop: -8 },
+
+  privacyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 28 },
+  privacyTxt: { color: 'rgba(255,255,255,0.25)', fontSize: 12, textDecorationLine: 'underline' },
 });

@@ -723,6 +723,21 @@ export default function App() {
           AsyncStorage.removeItem(AUTH_KEY);
           setScreen('login');
         }}
+        onDeleteAccount={async () => {
+          const { deleteAccount } = await import('./api/auth');
+          await deleteAccount(authToken!);
+          unregisterToken();
+          setAuthToken(null);
+          setAddresses([]);
+          setAddressIdMap({});
+          setActiveAddress('');
+          setRestaurantInfo(null);
+          setLoyaltyBalance(null);
+          setFavorites(new Set());
+          AsyncStorage.removeItem(ADDR_KEY);
+          AsyncStorage.removeItem(AUTH_KEY);
+          setScreen('login');
+        }}
         onOrdersPress={() => setScreen('orders')}
         onReservesPress={() => setScreen('reserves')}
         onAddressPress={() => { setAddrReturn('profile'); setScreen('addressBook'); }}

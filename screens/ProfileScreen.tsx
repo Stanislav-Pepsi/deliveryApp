@@ -2,6 +2,7 @@ import { AntDesign, Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useState } from 'react';
 import {
+  ActivityIndicator,
   Modal,
   ScrollView,
   StatusBar,
@@ -45,7 +46,7 @@ interface Props {
   onReservationPress: () => void;
   onCartPress: () => void;
   onLogout: () => void;
-  onDeleteAccount?: () => void;
+  onDeleteAccount?: () => Promise<void>;
   onOrdersPress: () => void;
   onReservesPress: () => void;
   onAddressPress: () => void;
@@ -65,6 +66,8 @@ export default function ProfileScreen({
   const [draft,             setDraft]             = useState('');
   const [logoutConfirm,     setLogoutConfirm]     = useState(false);
   const [deleteConfirm,     setDeleteConfirm]     = useState(false);
+  const [deletingAccount,   setDeletingAccount]   = useState(false);
+  const [deleteError,       setDeleteError]       = useState('');
 
   const openEdit = () => { setDraft(name); setEditOpen(true); };
   const saveName = () => {
@@ -242,20 +245,40 @@ export default function ProfileScreen({
       </Modal>
 
       {/* Delete account confirm modal */}
-      <Modal visible={deleteConfirm} transparent animationType="fade" onRequestClose={() => setDeleteConfirm(false)}>
+      <Modal visible={deleteConfirm} transparent animationType="fade" onRequestClose={() => { if (!deletingAccount) setDeleteConfirm(false); }}>
         <View style={styles.backdrop}>
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setDeleteConfirm(false)} />
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => { if (!deletingAccount) setDeleteConfirm(false); }} />
           <View style={styles.sheet}>
             <View style={styles.handle} />
             <View style={styles.confirmIconWrap}>
               <Ionicons name="trash-outline" size={32} color={RED} />
             </View>
             <Text style={styles.sheetTitle}>Удалить аккаунт?</Text>
-            <Text style={styles.sheetSub}>Это действие необратимо. Все ваши данные, заказы и бонусы будут удалены без возможности восстановления.</Text>
-            <TouchableOpacity style={styles.confirmBtnRed} onPress={() => { setDeleteConfirm(false); onDeleteAccount?.(); }} activeOpacity={0.85}>
-              <Text style={styles.confirmBtnTxt}>Удалить аккаунт</Text>
+            <Text style={styles.sheetSub}>Все данные профиля будут удалены. История заказов сохраняется.</Text>
+            {!!deleteError && <Text style={styles.deleteErrorTxt}>{deleteError}</Text>}
+            <TouchableOpacity
+              style={[styles.confirmBtnRed, deletingAccount && { opacity: 0.6 }]}
+              onPress={async () => {
+                setDeletingAccount(true);
+                setDeleteError('');
+                try {
+                  await onDeleteAccount?.();
+                  setDeleteConfirm(false);
+                } catch (e: any) {
+                  setDeleteError(e.message ?? 'Ошибка удаления');
+                } finally {
+                  setDeletingAccount(false);
+                }
+              }}
+              disabled={deletingAccount}
+              activeOpacity={0.85}
+            >
+              {deletingAccount
+                ? <ActivityIndicator color="#fff" />
+                : <Text style={styles.confirmBtnTxt}>Удалить аккаунт</Text>
+              }
             </TouchableOpacity>
-            <TouchableOpacity style={styles.confirmBtnGhost} onPress={() => setDeleteConfirm(false)} activeOpacity={0.7}>
+            <TouchableOpacity style={[styles.confirmBtnGhost, deletingAccount && { opacity: 0.4 }]} onPress={() => { if (!deletingAccount) setDeleteConfirm(false); }} activeOpacity={0.7}>
               <Text style={styles.confirmBtnGhostTxt}>Отмена</Text>
             </TouchableOpacity>
             <View style={{ height: 36 }} />
@@ -354,4 +377,5 @@ const styles = StyleSheet.create({
     paddingVertical: 17, alignItems: 'center', marginBottom: 4,
   },
   confirmBtnGhostTxt: { color: 'rgba(255,255,255,0.55)', fontSize: 16, fontWeight: '600' },
+  deleteErrorTxt: { color: RED, fontSize: 13, textAlign: 'center', marginBottom: 12, marginTop: -8 },
 });

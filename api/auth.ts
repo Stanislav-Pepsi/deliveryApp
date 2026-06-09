@@ -36,6 +36,19 @@ export async function sendOtp(phone: string): Promise<void> {
   }
 }
 
+export async function deleteAccount(token: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/auth/account`, {
+    method: 'DELETE',
+    headers: baseHeaders(token),
+  });
+  // 401 = token expired or already deleted — treat as logged out
+  if (res.status === 401) return;
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.message || 'Ошибка удаления аккаунта');
+  }
+}
+
 export async function verifyOtp(
   phone: string,
   code: string,

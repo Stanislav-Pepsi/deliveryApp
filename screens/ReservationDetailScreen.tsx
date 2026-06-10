@@ -3,7 +3,7 @@ import LottieView from 'lottie-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
 
-const WS_URL = 'https://api.starten.kz';
+import { WS_URL } from '../api/config';
 import {
   ActivityIndicator,
   Alert,

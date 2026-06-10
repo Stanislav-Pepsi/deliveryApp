@@ -59,7 +59,7 @@ import { Announcement, fetchAnnouncements } from '../api/announcements';
 import { io } from 'socket.io-client';
 import { DEMO_ACTIVE_ORDERS, DEMO_DISHES } from '../constants/demo';
 
-const WS_URL = 'https://nonvirulently-nonpursuant-georgie.ngrok-free.dev';
+import { WS_URL } from '../api/config';
 import { OrderSummary } from './OrdersScreen';
 
 const NAV = [

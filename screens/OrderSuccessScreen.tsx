@@ -26,7 +26,7 @@ const BG = '#0c0f0a';
 const CARD = 'rgba(255,255,255,0.06)';
 const BORDER = 'rgba(255,255,255,0.1)';
 
-const WS_URL = 'https://api.starten.kz';
+import { WS_URL } from '../api/config';
 
 interface Props {
   total: number;

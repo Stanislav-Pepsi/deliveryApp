@@ -13,7 +13,7 @@ import Text from '../components/Text';
 import { DishData, OrderDisplayItem } from '../App';
 import { ApiOrder, fetchOrders } from '../api/orders';
 
-const WS_URL = 'https://nonvirulently-nonpursuant-georgie.ngrok-free.dev';
+import { WS_URL } from '../api/config';
 
 const GREEN      = '#8DBB00';
 const GREEN_DARK = '#4a6600';

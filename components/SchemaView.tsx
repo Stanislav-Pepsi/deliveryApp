@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, TouchableOpacity, View, useWindowDimensions } from 'react-native';
+﻿import { ScrollView, StyleSheet, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import Text from './Text';
 import {
   ApiTable,
@@ -6,7 +6,7 @@ import {
   SectionSchema,
 } from '../api/reservations';
 
-const GREEN = '#8DBB00';
+const GREEN = '#E8242E';
 
 function toRgba(color?: SchemaColor, fallback = 'transparent'): string {
   if (!color) return fallback;
@@ -172,3 +172,4 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.1)',
   },
 });
+

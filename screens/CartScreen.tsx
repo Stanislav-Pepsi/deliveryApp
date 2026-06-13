@@ -17,8 +17,8 @@ import { CartItem, DishData } from '../App';
 import { validatePromo, calcDiscount, promoLabel, PromoResult } from '../api/promos';
 import { RestaurantInfo } from '../api/restaurant';
 
-const GREEN = '#8DBB00';
-const BG = '#0c0f0a';
+const GREEN = '#E8242E';
+const BG = '#0a0a0a';
 const CARD = 'rgba(255,255,255,0.06)';
 
 interface Props {
@@ -443,10 +443,10 @@ const styles = StyleSheet.create({
   promoSuccessTxt: { color: GREEN, fontSize: 12, fontWeight: '600', marginTop: -6 },
   promoDescTxt:    { color: 'rgba(255,255,255,0.4)', fontSize: 11, marginTop: -8 },
   promoProgressWrap: {
-    backgroundColor: 'rgba(141,187,0,0.1)',
+    backgroundColor: 'rgba(232,36,46,0.1)',
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: 'rgba(141,187,0,0.25)',
+    borderColor: 'rgba(232,36,46,0.25)',
     padding: 12,
     marginHorizontal: 16,
     marginBottom: 8,
@@ -473,8 +473,8 @@ const styles = StyleSheet.create({
     backgroundColor: GREEN,
   },
 
-  giftCard: { borderWidth: 1, borderColor: 'rgba(141,187,0,0.3)', backgroundColor: 'rgba(141,187,0,0.05)' },
-  giftBadge: { backgroundColor: 'rgba(141,187,0,0.15)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
+  giftCard: { borderWidth: 1, borderColor: 'rgba(232,36,46,0.3)', backgroundColor: 'rgba(232,36,46,0.05)' },
+  giftBadge: { backgroundColor: 'rgba(232,36,46,0.15)', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
   giftBadgeTxt: { color: GREEN, fontSize: 11, fontWeight: '700' },
 
   summary: {
@@ -500,7 +500,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.15)',
     backgroundColor: 'rgba(255,255,255,0.06)',
   },
-  bonusToggleActive:   { borderColor: GREEN, backgroundColor: 'rgba(141,187,0,0.12)' },
+  bonusToggleActive:   { borderColor: GREEN, backgroundColor: 'rgba(232,36,46,0.12)' },
   bonusToggleTxt:      { color: 'rgba(255,255,255,0.4)', fontSize: 13, fontWeight: '600' },
   bonusToggleTxtActive:{ color: GREEN },
   bonusDeduct: { color: GREEN, fontSize: 11, fontWeight: '600', marginBottom: 2 },
@@ -516,3 +516,4 @@ const styles = StyleSheet.create({
   },
   checkoutTxt: { color: '#fff', fontSize: 17, fontWeight: '700' },
 });
+

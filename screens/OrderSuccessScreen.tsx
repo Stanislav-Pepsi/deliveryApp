@@ -20,9 +20,9 @@ import { OrderDisplayItem } from '../App';
 import { cancelOrder, fetchOrderById } from '../api/orders';
 import { RestaurantInfo } from '../api/restaurant';
 
-const GREEN = '#8DBB00';
-const GREEN_DARK = '#4a6600';
-const BG = '#0c0f0a';
+const GREEN = '#E8242E';
+const GREEN_DARK = '#8B1520';
+const BG = '#0a0a0a';
 const CARD = 'rgba(255,255,255,0.06)';
 const BORDER = 'rgba(255,255,255,0.1)';
 
@@ -604,8 +604,8 @@ const styles = StyleSheet.create({
   infoRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10 },
   infoVal: { color: '#fff', fontSize: 13, fontWeight: '500' },
   infoValOld: { color: 'rgba(255,255,255,0.35)', fontSize: 12, textDecorationLine: 'line-through', marginBottom: 1 },
-  bonusLine:     { color: '#8DBB00', fontSize: 13, fontWeight: '500' },
-  bonusEarnLine: { color: '#8DBB00', fontSize: 13, fontWeight: '700' },
+  bonusLine:     { color: '#E8242E', fontSize: 13, fontWeight: '500' },
+  bonusEarnLine: { color: '#E8242E', fontSize: 13, fontWeight: '700' },
   kaspiIcon: { width: 18, height: 18, marginTop: 1 },
 
   trackerCard: {
@@ -680,7 +680,7 @@ const styles = StyleSheet.create({
   btns: { width: '100%', gap: 12 },
   callBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: 'rgba(141,187,0,0.1)',
+    backgroundColor: 'rgba(232,36,46,0.1)',
     borderRadius: 30, paddingVertical: 16,
     borderWidth: 1, borderColor: GREEN,
   },
@@ -710,7 +710,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   statusBadge: {
-    backgroundColor: 'rgba(141,187,0,0.15)',
+    backgroundColor: 'rgba(232,36,46,0.15)',
     borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8,
     marginBottom: 28,
   },
@@ -718,3 +718,4 @@ const styles = StyleSheet.create({
   statusBadgeTxt: { color: GREEN, fontSize: 14, fontWeight: '700' },
   statusBadgeCancelledTxt: { color: '#e05252' },
 });
+

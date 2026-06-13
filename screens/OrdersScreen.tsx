@@ -15,9 +15,9 @@ import { ApiOrder, fetchOrders } from '../api/orders';
 
 import { WS_URL } from '../api/config';
 
-const GREEN      = '#8DBB00';
-const GREEN_DARK = '#4a6600';
-const BG         = '#0c0f0a';
+const GREEN      = '#E8242E';
+const GREEN_DARK = '#8B1520';
+const BG         = '#0a0a0a';
 const CARD       = 'rgba(255,255,255,0.06)';
 const BORDER     = 'rgba(255,255,255,0.1)';
 
@@ -292,7 +292,7 @@ const styles = StyleSheet.create({
     marginBottom: -8,
     zIndex: 1,
   },
-  orderTagActive: { backgroundColor: 'rgba(141,187,0,0.15)', borderColor: GREEN },
+  orderTagActive: { backgroundColor: 'rgba(232,36,46,0.15)', borderColor: GREEN },
   orderTagDim:    { backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.15)' },
   orderTagTxt:       { fontSize: 12, fontWeight: '700' },
   orderTagTxtActive: { color: GREEN },
@@ -304,7 +304,7 @@ const styles = StyleSheet.create({
     padding: 16,
   },
   cardActive: {
-    backgroundColor: 'rgba(141,187,0,0.08)',
+    backgroundColor: 'rgba(232,36,46,0.08)',
     borderColor: GREEN_DARK,
     borderWidth: 1.5,
   },
@@ -316,12 +316,13 @@ const styles = StyleSheet.create({
   cardBottom: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   orderDate:  { color: 'rgba(255,255,255,0.4)', fontSize: 12 },
   orderTotal:    { color: '#fff', fontSize: 15, fontWeight: '700' },
-  orderDiscount: { color: '#8DBB00', fontSize: 12, fontWeight: '600', marginBottom: 4 },
+  orderDiscount: { color: '#E8242E', fontSize: 12, fontWeight: '600', marginBottom: 4 },
 
   badge:          { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20, borderWidth: 1 },
-  badgeActive:    { backgroundColor: 'rgba(141,187,0,0.15)', borderColor: GREEN_DARK },
+  badgeActive:    { backgroundColor: 'rgba(232,36,46,0.15)', borderColor: GREEN_DARK },
   badgeDone:      { backgroundColor: 'rgba(255,255,255,0.06)', borderColor: 'rgba(255,255,255,0.12)' },
   badgeTxt:       { fontSize: 11, fontWeight: '700' },
   badgeActiveTxt: { color: GREEN },
   badgeDoneTxt:   { color: 'rgba(255,255,255,0.4)' },
 });
+

@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import LottieView from 'lottie-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { io } from 'socket.io-client';
@@ -21,8 +21,8 @@ import Text from '../components/Text';
 import { RestaurantInfo } from '../api/restaurant';
 import { cancelReservation } from '../api/reservations';
 
-const GREEN  = '#8DBB00';
-const BG     = '#0c0f0a';
+const GREEN  = '#E8242E';
+const BG     = '#0a0a0a';
 const CARD   = 'rgba(255,255,255,0.06)';
 const BORDER = 'rgba(255,255,255,0.1)';
 
@@ -325,7 +325,7 @@ const styles = StyleSheet.create({
   banquetChargeRow:  { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 4 },
   banquetTotal:      { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 10, marginTop: 4, borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)' },
   banquetTotalLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 13, fontWeight: '600' },
-  banquetTotalPrice: { color: '#8DBB00', fontSize: 15, fontWeight: '800' },
+  banquetTotalPrice: { color: '#E8242E', fontSize: 15, fontWeight: '800' },
 
   bottomBar: {
     paddingHorizontal: 16, paddingTop: 12, paddingBottom: 46,
@@ -333,7 +333,7 @@ const styles = StyleSheet.create({
   },
   callBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: 'rgba(141,187,0,0.1)',
+    backgroundColor: 'rgba(232,36,46,0.1)',
     borderRadius: 30, paddingVertical: 16,
     borderWidth: 1, borderColor: GREEN,
   },
@@ -366,3 +366,4 @@ const styles = StyleSheet.create({
   },
   dialogBtnYesTxt: { color: '#e05252', fontSize: 15, fontWeight: '700' },
 });
+

@@ -10,9 +10,9 @@ import {
 } from 'react-native';
 import Text from '../components/Text';
 
-const GREEN      = '#8DBB00';
-const GREEN_DARK = '#4a6600';
-const BG         = '#0c0f0a';
+const GREEN      = '#E8242E';
+const GREEN_DARK = '#8B1520';
+const BG         = '#0a0a0a';
 const CARD       = 'rgba(255,255,255,0.06)';
 const BORDER     = 'rgba(255,255,255,0.1)';
 const RED        = '#e05252';
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: BORDER,
     padding: 16,
   },
-  addrCardActive: { borderColor: GREEN, backgroundColor: 'rgba(141,187,0,0.07)' },
+  addrCardActive: { borderColor: GREEN, backgroundColor: 'rgba(232,36,46,0.07)' },
 
   radioOuter: {
     width: 20, height: 20, borderRadius: 4,
@@ -171,8 +171,9 @@ const styles = StyleSheet.create({
   },
   addBtn: {
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: '#8DBB00', borderRadius: 30,
+    backgroundColor: '#E8242E', borderRadius: 30,
     paddingVertical: 18,
   },
   addBtnTxt: { color: '#fff', fontSize: 17, fontWeight: '700' },
 });
+

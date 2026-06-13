@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,11 +13,12 @@ import {
   View,
 } from 'react-native';
 import Text from '../components/Text';
+import IikoErrorModal from '../components/IikoErrorModal';
 import { ApiTable, BanquetOrderItem, TableSection, createReservation, fetchSections } from '../api/reservations';
 
-const GREEN      = '#8DBB00';
-const GREEN_DARK = '#4a6600';
-const BG         = '#0c0f0a';
+const GREEN      = '#E8242E';
+const GREEN_DARK = '#8B1520';
+const BG         = '#0a0a0a';
 const CARD       = 'rgba(255,255,255,0.06)';
 const BORDER     = 'rgba(255,255,255,0.1)';
 const CELL_SZ    = 62;
@@ -40,6 +41,7 @@ interface Props {
   onConfirm: (result: { reservationId: string; tableName: string; tableNumber?: number; sectionName?: string; guests: number; comment?: string }) => void;
   authToken: string | null;
   isDemoMode?: boolean;
+  restaurantPhone?: string | null;
 }
 
 function formatDate(s: string) {
@@ -50,7 +52,7 @@ function formatDate(s: string) {
 
 export default function TableSelectionScreen({
   date, time, guests, bookType, banquetItems, banquetTotal, serviceChargePercent, phone,
-  tableId, onTableChange, onBack, onBanquetMenu, onConfirm, authToken, isDemoMode,
+  tableId, onTableChange, onBack, onBanquetMenu, onConfirm, authToken, isDemoMode, restaurantPhone,
 }: Props) {
   const [sections, setSections] = useState<TableSection[]>([]);
   const [sectionId, setSectionId] = useState('');
@@ -58,6 +60,7 @@ export default function TableSelectionScreen({
   const [loadError, setLoadError] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState('');
+  const [iikoError, setIikoError]       = useState(false);
   const [localGuests, setLocalGuests] = useState(guests);
   const [comment, setComment] = useState('');
   const [selectedSectionName, setSelectedSectionName] = useState<string | undefined>(undefined);
@@ -136,10 +139,12 @@ export default function TableSelectionScreen({
       onConfirm({ reservationId: data.reservationId ?? data.id, tableName: selTable.name, tableNumber: selTable.number || undefined, sectionName: selectedSectionName || section?.name, guests: localGuests, comment: comment.trim() || undefined });
     } catch (e: any) {
       const msg = e.message || 'Ошибка создания резерва';
-      setConfirmError(msg);
       if (e.status === 409 || msg.includes('уже забронирован')) {
+        setConfirmError('Этот стол уже забронирован. Выберите другой.');
         onTableChange(null);
         setSelectedSectionName(undefined);
+      } else {
+        setIikoError(true);
       }
     } finally {
       setConfirming(false);
@@ -155,6 +160,11 @@ export default function TableSelectionScreen({
 
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : 'height'} keyboardVerticalOffset={0}>
+      <IikoErrorModal
+        visible={iikoError}
+        onClose={() => setIikoError(false)}
+        phone={restaurantPhone}
+      />
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       <View style={styles.header}>
@@ -392,9 +402,10 @@ const styles = StyleSheet.create({
 
   banquetMenuBtn: {
     flexDirection: 'row', alignItems: 'center',
-    backgroundColor: 'rgba(141,187,0,0.08)', borderRadius: 14,
+    backgroundColor: 'rgba(232,36,46,0.08)', borderRadius: 14,
     paddingHorizontal: 16, paddingVertical: 14,
   },
   banquetMenuTxt: { flex: 1, color: GREEN, fontSize: 14, fontWeight: '600', marginHorizontal: 10 },
-  banquetMenuSub: { color: 'rgba(141,187,0,0.7)', fontSize: 12, marginRight: 6 },
+  banquetMenuSub: { color: 'rgba(232,36,46,0.7)', fontSize: 12, marginRight: 6 },
 });
+

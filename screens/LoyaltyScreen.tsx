@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -12,9 +12,9 @@ import {
 import Text from '../components/Text';
 import { LoyaltyBalance, LoyaltyTransaction, fetchLoyaltyBalance, fetchLoyaltyTransactions } from '../api/loyalty';
 
-const GREEN      = '#8DBB00';
-const GREEN_DARK = '#4a6600';
-const BG         = '#0c0f0a';
+const GREEN      = '#E8242E';
+const GREEN_DARK = '#8B1520';
+const BG         = '#0a0a0a';
 const CARD       = 'rgba(255,255,255,0.06)';
 const BORDER     = 'rgba(255,255,255,0.1)';
 const RED        = '#e05252';
@@ -127,7 +127,7 @@ export default function LoyaltyScreen({ onBack, authToken, isDemoMode, demoBalan
                 const amount = parseFloat(t.amount);
                 return (
                   <View style={[styles.row, i < transactions.length - 1 && styles.rowDivider]}>
-                    <View style={[styles.iconBox, { backgroundColor: cfg.color === GREEN ? 'rgba(141,187,0,0.12)' : 'rgba(224,82,82,0.12)' }]}>
+                    <View style={[styles.iconBox, { backgroundColor: cfg.color === GREEN ? 'rgba(232,36,46,0.12)' : 'rgba(224,82,82,0.12)' }]}>
                       <Ionicons name={cfg.sign === '+' ? 'arrow-up' : 'arrow-down'} size={16} color={cfg.color} />
                     </View>
                     <View style={{ flex: 1, marginLeft: 12 }}>
@@ -167,7 +167,7 @@ const styles = StyleSheet.create({
   scroll: { paddingHorizontal: 20, paddingTop: 8 },
 
   balanceCard: {
-    backgroundColor: 'rgba(141,187,0,0.08)',
+    backgroundColor: 'rgba(232,36,46,0.08)',
     borderRadius: 20, borderWidth: 1.5, borderColor: GREEN_DARK,
     padding: 24, alignItems: 'center', marginBottom: 20,
   },
@@ -194,3 +194,4 @@ const styles = StyleSheet.create({
   empty:    { alignItems: 'center', paddingTop: 60, gap: 12 },
   emptyTxt: { color: 'rgba(255,255,255,0.4)', fontSize: 16, fontWeight: '600' },
 });
+

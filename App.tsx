@@ -569,6 +569,7 @@ export default function App() {
         }))}
         banquetTotal={banquetItems.reduce((s, i) => s + i.unitPrice * i.qty, 0)}
         serviceChargePercent={restaurantInfo?.serviceChargePercent ?? 0}
+        restaurantPhone={restaurantInfo?.phone}
         phone={userPhone}
         tableId={banquetTableId}
         onTableChange={setBanquetTableId}

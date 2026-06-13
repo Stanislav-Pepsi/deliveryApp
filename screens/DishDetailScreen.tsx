@@ -16,9 +16,9 @@ import Text from '../components/Text';
 import { CartItem, DishData, SelectedExtra } from '../App';
 
 const { width: W, height: H } = Dimensions.get('window');
-const GREEN = '#8DBB00';
-const GREEN_DARK = '#5a7a00';
-const BG = '#0c0f0a';
+const GREEN = '#E8242E';
+const GREEN_DARK = '#8B1520';
+const BG = '#0a0a0a';
 const SHEET_H = 420;
 const BOTTOM_BAR_H = 100;
 
@@ -394,9 +394,9 @@ const styles = StyleSheet.create({
   groupTitle: { color: 'rgba(255,255,255,0.4)', fontSize: 12, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   groupTitleRequired: { color: '#e05252' },
   requiredBadge:     { backgroundColor: 'rgba(224,82,82,0.15)', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2 },
-  requiredBadgeDone: { backgroundColor: 'rgba(141,187,0,0.15)' },
+  requiredBadgeDone: { backgroundColor: 'rgba(232,36,46,0.15)' },
   requiredBadgeTxt:  { color: '#e05252', fontSize: 11, fontWeight: '700' },
-  requiredBadgeTxtDone: { color: '#8DBB00' },
+  requiredBadgeTxtDone: { color: '#E8242E' },
   extraRow: {
     flexDirection: 'row', alignItems: 'center',
     paddingVertical: 12,
@@ -415,7 +415,7 @@ const styles = StyleSheet.create({
   bottomBar: {
     flexDirection: 'row',
     paddingHorizontal: 20, paddingTop: 14, paddingBottom: 46,
-    backgroundColor: '#0c0f0a',
+    backgroundColor: '#0a0a0a',
     borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.08)',
     gap: 12, alignItems: 'center',
     elevation: 30,
@@ -438,3 +438,4 @@ const styles = StyleSheet.create({
   },
   cartBtnTxt: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
+

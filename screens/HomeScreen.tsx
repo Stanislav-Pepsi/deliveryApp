@@ -943,3 +943,4 @@ const styles = StyleSheet.create({
   announcTitle: { color: '#fff', fontSize: 20, fontWeight: '800' },
   announcText:  { color: 'rgba(255,255,255,0.65)', fontSize: 15, lineHeight: 22 },
 });
+

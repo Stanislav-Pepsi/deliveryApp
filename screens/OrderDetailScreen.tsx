@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useRef } from 'react';
 import {
   Animated,
@@ -11,9 +11,9 @@ import {
 } from 'react-native';
 import Text from '../components/Text';
 
-const GREEN      = '#8DBB00';
-const GREEN_DARK = '#4a6600';
-const BG         = '#0c0f0a';
+const GREEN      = '#E8242E';
+const GREEN_DARK = '#8B1520';
+const BG         = '#0a0a0a';
 const CARD       = 'rgba(255,255,255,0.06)';
 const BORDER     = 'rgba(255,255,255,0.1)';
 
@@ -314,3 +314,4 @@ const styles = StyleSheet.create({
   backBtnBottom: { backgroundColor: GREEN, borderRadius: 30, paddingVertical: 18, alignItems: 'center' },
   backBtnTxt:    { color: '#fff', fontSize: 17, fontWeight: '700' },
 });
+

@@ -13,9 +13,9 @@ import {
 import Text from '../components/Text';
 import { RestaurantInfo, getHoursForDay } from '../api/restaurant';
 
-const GREEN      = '#8DBB00';
-const GREEN_DARK = '#4a6600';
-const BG         = '#0c0f0a';
+const GREEN      = '#E8242E';
+const GREEN_DARK = '#8B1520';
+const BG         = '#0a0a0a';
 const SHEET_BG   = '#161a13';
 const CARD       = 'rgba(255,255,255,0.06)';
 const BORDER     = 'rgba(255,255,255,0.1)';
@@ -490,7 +490,7 @@ const styles = StyleSheet.create({
     borderWidth: 1.5, borderColor: BORDER, position: 'relative',
     alignItems: 'center',
   },
-  typeCardActive: { borderColor: GREEN, backgroundColor: 'rgba(141,187,0,0.08)' },
+  typeCardActive: { borderColor: GREEN, backgroundColor: 'rgba(232,36,46,0.08)' },
   typeCheck: {
     position: 'absolute', top: 10, right: 10,
     width: 20, height: 20, borderRadius: 10,
@@ -508,7 +508,7 @@ const styles = StyleSheet.create({
   },
   locIcon: {
     width: 36, height: 36, borderRadius: 10,
-    backgroundColor: 'rgba(141,187,0,0.12)',
+    backgroundColor: 'rgba(232,36,46,0.12)',
     alignItems: 'center', justifyContent: 'center',
   },
   locName: { color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 2 },
@@ -519,7 +519,7 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: CARD, borderRadius: 14, padding: 14,
     borderWidth: 1.5, borderColor: BORDER,
   },
-  inputCardDone: { borderColor: 'rgba(141,187,0,0.45)' },
+  inputCardDone: { borderColor: 'rgba(232,36,46,0.45)' },
   inputHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   inputLabel: { color: 'rgba(255,255,255,0.35)', fontSize: 10, fontWeight: '700', letterSpacing: 1 },
   inputLabelDone: { color: GREEN },
@@ -586,7 +586,7 @@ const styles = StyleSheet.create({
 
   weekRow:  { flexDirection: 'row', marginBottom: 2 },
   dayCell:  { flex: 1, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22 },
-  dayCellToday: { backgroundColor: 'rgba(141,187,0,0.15)' },
+  dayCellToday: { backgroundColor: 'rgba(232,36,46,0.15)' },
   dayCellSel:   { backgroundColor: GREEN },
   dayNum:       { color: 'rgba(255,255,255,0.75)', fontSize: 15 },
   dayNumFaded:  { color: 'rgba(255,255,255,0.18)' },
@@ -612,8 +612,8 @@ const styles = StyleSheet.create({
   wheelSelector: {
     height: ITEM_H,
     borderTopWidth: 1, borderBottomWidth: 1,
-    borderColor: 'rgba(141,187,0,0.45)',
-    backgroundColor: 'rgba(141,187,0,0.07)',
+    borderColor: 'rgba(232,36,46,0.45)',
+    backgroundColor: 'rgba(232,36,46,0.07)',
   },
   wheelFadeTop: { position: 'absolute', top: 0, left: 0, right: 0, height: ITEM_H * 2 },
   wheelFadeBot: { position: 'absolute', bottom: 0, left: 0, right: 0, height: ITEM_H * 2 },
@@ -625,3 +625,4 @@ const styles = StyleSheet.create({
   },
   confirmTxt: { color: '#fff', fontSize: 16, fontWeight: '700' },
 });
+

@@ -18,13 +18,13 @@ import { fetchMenu } from '../api/menu';
 
 const { width: W } = Dimensions.get('window');
 const TAG_COLORS: Record<string, string> = {
-  tag_new:   '#8DBB00',
+  tag_new:   '#E8242E',
   tag_hit:   '#7B2FBE',
   tag_spicy: '#E8242E',
 };
-const GREEN      = '#8DBB00';
-const GREEN_DARK = '#4a6600';
-const BG         = '#0c0f0a';
+const GREEN      = '#E8242E';
+const GREEN_DARK = '#8B1520';
+const BG         = '#0a0a0a';
 const CARD       = 'rgba(255,255,255,0.07)';
 const BORDER     = 'rgba(255,255,255,0.1)';
 const H_PAD      = 16;
@@ -372,3 +372,4 @@ const styles = StyleSheet.create({
   qtyBtnTxt:     { color: '#fff', fontSize: 18, lineHeight: 22 },
   qtyNum:        { color: '#fff', fontSize: 15, fontWeight: '700', minWidth: 20, textAlign: 'center' },
 });
+

@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import {
   Dimensions,
   Image,
@@ -12,8 +12,8 @@ import Text from '../components/Text';
 import { DishData } from '../App';
 
 const { width: W } = Dimensions.get('window');
-const GREEN = '#8DBB00';
-const BG    = '#0c0f0a';
+const GREEN = '#E8242E';
+const BG    = '#0a0a0a';
 const CARD  = 'rgba(255,255,255,0.06)';
 
 interface Props {
@@ -131,3 +131,4 @@ const styles = StyleSheet.create({
   },
   priceTxt: { color: '#fff', fontWeight: '700', fontSize: 13 },
 });
+

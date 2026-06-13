@@ -15,14 +15,15 @@ import {
   View,
 } from 'react-native';
 import Text from '../components/Text';
+import IikoErrorModal from '../components/IikoErrorModal';
 import { CartItem } from '../App';
 import { createOrder, UnavailableItemsError } from '../api/orders';
 import { fetchLoyaltyBalance } from '../api/loyalty';
 import { RestaurantInfo, getHoursForDay } from '../api/restaurant';
 
-const GREEN = '#8DBB00';
-const GREEN_DARK = '#4a6600';
-const BG = '#0c0f0a';
+const GREEN = '#E8242E';
+const GREEN_DARK = '#8B1520';
+const BG = '#0a0a0a';
 const CARD = 'rgba(255,255,255,0.06)';
 const BORDER = 'rgba(255,255,255,0.1)';
 
@@ -154,6 +155,7 @@ export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, a
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [iikoError, setIikoError]     = useState(false);
 
   const handleSubmit = async () => {
     if (isDemoMode) {
@@ -175,7 +177,7 @@ export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, a
         const names = e.productIds.map(id => cartItems.find(i => i.dish.id === id)?.dish.name ?? id).join(', ');
         setSubmitError(`Недоступно: ${names}. Вернитесь в корзину и удалите эти позиции.`);
       } else {
-        setSubmitError(e.message || 'Ошибка оформления заказа');
+        setIikoError(true);
       }
     } finally {
       setSubmitting(false);
@@ -184,6 +186,11 @@ export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, a
 
   return (
     <View style={styles.root}>
+      <IikoErrorModal
+        visible={iikoError}
+        onClose={() => setIikoError(false)}
+        phone={restaurantInfo?.phone}
+      />
       <StatusBar barStyle="light-content" backgroundColor="transparent" translucent />
 
       {/* Header */}
@@ -339,7 +346,7 @@ export default function CheckoutScreen({ subtotal, deliveryFeeAmount, address, a
         {!!submitError && <Text style={styles.errorTxt}>{submitError}</Text>}
         {!!estimatedBonuses && estimatedBonuses > 0 && (
           <View style={styles.bonusAccrualRow}>
-            <Ionicons name="star" size={13} color="#8DBB00" />
+            <Ionicons name="star" size={13} color="#E8242E" />
             <Text style={styles.bonusAccrualTxt}>
               Начислим {estimatedBonuses.toLocaleString('ru-RU')} бонусов после заказа
             </Text>
@@ -546,17 +553,17 @@ const styles = StyleSheet.create({
     backgroundColor: CARD, borderRadius: 14,
     borderWidth: 1.5, borderColor: BORDER, padding: 14,
   },
-  bonusCardActive: { borderColor: '#8DBB00', backgroundColor: 'rgba(141,187,0,0.08)' },
+  bonusCardActive: { borderColor: '#E8242E', backgroundColor: 'rgba(232,36,46,0.08)' },
   bonusTitle:  { color: '#fff', fontSize: 15, fontWeight: '700', marginBottom: 3 },
   bonusSub:    { color: 'rgba(255,255,255,0.4)', fontSize: 12 },
-  bonusDeduct: { color: '#8DBB00', fontSize: 12, marginTop: 4, fontWeight: '600' },
+  bonusDeduct: { color: '#E8242E', fontSize: 12, marginTop: 4, fontWeight: '600' },
   bonusToggle: {
     width: 36, height: 36, borderRadius: 10,
     backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center', justifyContent: 'center', marginLeft: 12,
   },
-  bonusToggleActive: { backgroundColor: '#4a6600' },
-  totalBonus: { color: '#8DBB00', fontSize: 12, fontWeight: '600', marginBottom: 2 },
+  bonusToggleActive: { backgroundColor: '#8B1520' },
+  totalBonus: { color: '#E8242E', fontSize: 12, fontWeight: '600', marginBottom: 2 },
 
   commentInput: {
     backgroundColor: CARD,
@@ -590,7 +597,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   bonusAccrualRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  bonusAccrualTxt: { color: '#8DBB00', fontSize: 12, fontWeight: '600', flex: 1 },
+  bonusAccrualTxt: { color: '#E8242E', fontSize: 12, fontWeight: '600', flex: 1 },
   totalLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 13 },
   totalVal: { color: '#fff', fontSize: 17, fontWeight: '800' },
   payBtn: {
@@ -630,7 +637,7 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255,255,255,0.12)',
     backgroundColor: 'rgba(255,255,255,0.05)',
   },
-  slotChipActive: { borderColor: GREEN, backgroundColor: 'rgba(141,187,0,0.12)' },
+  slotChipActive: { borderColor: GREEN, backgroundColor: 'rgba(232,36,46,0.12)' },
   slotTxt: { color: 'rgba(255,255,255,0.6)', fontSize: 15, fontWeight: '600' },
   slotTxtActive: { color: GREEN },
   noSlotsTxt: { color: 'rgba(255,255,255,0.35)', fontSize: 14, textAlign: 'center', marginTop: 20 },
@@ -644,3 +651,4 @@ const styles = StyleSheet.create({
   },
   confirmBtnTxt: { color: '#fff', fontSize: 15, fontWeight: '700' },
 });
+

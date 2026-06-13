@@ -1,5 +1,5 @@
 ﻿import { StatusBar } from 'expo-status-bar';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
@@ -9,12 +9,16 @@ import {
   View,
 } from 'react-native';
 import Text from '../components/Text';
+import LegalModal from '../components/LegalModal';
+import { PRIVACY_POLICY_TITLE, PRIVACY_POLICY_TEXT, PUBLIC_OFFER_TITLE, PUBLIC_OFFER_TEXT } from '../constants/legal';
 import { sendOtp, verifyOtp } from '../api/auth';
 import { DEMO_PHONE } from '../constants/demo';
 
 interface Props {
   onSuccess: (name: string, token: string, phone: string) => void;
 }
+
+const COOLDOWN_SEC = 60;
 
 export default function LoginScreen({ onSuccess }: Props) {
   const [name, setName]               = useState('');
@@ -27,6 +31,26 @@ export default function LoginScreen({ onSuccess }: Props) {
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState('');
   const [agreed, setAgreed]           = useState(false);
+  const [cooldown, setCooldown]       = useState(0);
+  const [showPrivacy, setShowPrivacy] = useState(false);
+  const [showOffer,   setShowOffer]   = useState(false);
+
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, []);
+
+  const startCooldown = () => {
+    setCooldown(COOLDOWN_SEC);
+    if (timerRef.current) clearInterval(timerRef.current);
+    timerRef.current = setInterval(() => {
+      setCooldown(prev => {
+        if (prev <= 1) { clearInterval(timerRef.current!); return 0; }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
   const rawPhone = '+7' + phone.replace(/\s/g, '');
 
@@ -44,34 +68,43 @@ export default function LoginScreen({ onSuccess }: Props) {
     }
     setPhone(formatted);
     setError('');
+    // сбрасываем OTP-состояние при изменении номера
+    if (codeSent) {
+      setCodeSent(false);
+      setCode('');
+      setCooldown(0);
+      if (timerRef.current) clearInterval(timerRef.current);
+    }
+  };
+
+  const doSendOtp = async () => {
+    if (phone.replace(/\s/g, '').length < 10) {
+      setError('Введите номер телефона');
+      return;
+    }
+    if (rawPhone === DEMO_PHONE) {
+      onSuccess('Демо', 'DEMO_TOKEN', rawPhone);
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await sendOtp(rawPhone);
+      setCodeSent(true);
+      startCooldown();
+    } catch (e: any) {
+      setError(e.message ?? 'Ошибка отправки кода');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handlePress = async () => {
     setError('');
     if (!codeSent) {
-      if (phone.replace(/\s/g, '').length < 10) {
-        setError('Введите номер телефона');
-        return;
-      }
-      // Demo — bypass login entirely, no backend calls
-      if (rawPhone === DEMO_PHONE) {
-        onSuccess('Демо', 'DEMO_TOKEN', rawPhone);
-        return;
-      }
-      setLoading(true);
-      try {
-        await sendOtp(rawPhone);
-        setCodeSent(true);
-      } catch (e: any) {
-        setError(e.message ?? 'Ошибка отправки кода');
-      } finally {
-        setLoading(false);
-      }
+      await doSendOtp();
     } else {
-      if (code.length < 4) {
-        setError('Введите 4-значный код');
-        return;
-      }
+      if (code.length < 4) { setError('Введите 4-значный код'); return; }
       setLoading(true);
       try {
         const result = await verifyOtp(rawPhone, code, name);
@@ -84,9 +117,19 @@ export default function LoginScreen({ onSuccess }: Props) {
     }
   };
 
+  const handleResend = async () => {
+    if (cooldown > 0 || loading) return;
+    setCode('');
+    await doSendOtp();
+  };
+
+  const canSend = agreed && !loading;
+
   return (
     <View style={styles.root}>
       <StatusBar style="dark" />
+      <LegalModal visible={showPrivacy} title={PRIVACY_POLICY_TITLE} text={PRIVACY_POLICY_TEXT} onClose={() => setShowPrivacy(false)} />
+      <LegalModal visible={showOffer}   title={PUBLIC_OFFER_TITLE}   text={PUBLIC_OFFER_TEXT}   onClose={() => setShowOffer(false)} />
 
       <View style={styles.content}>
         <Image
@@ -98,7 +141,6 @@ export default function LoginScreen({ onSuccess }: Props) {
         <Text style={styles.title}>
           <Text style={styles.titleWhite}>Авторизация</Text>
         </Text>
-
 
         <Text style={styles.label}>ИМЯ</Text>
         <View style={[styles.inputBox, nameFocused && styles.inputBoxFocused]}>
@@ -114,7 +156,7 @@ export default function LoginScreen({ onSuccess }: Props) {
             underlineColorAndroid="transparent"
             selectionColor={GREEN}
             cursorColor={GREEN}
-            editable={!codeSent && !loading}
+            editable={!loading}
           />
         </View>
 
@@ -136,7 +178,7 @@ export default function LoginScreen({ onSuccess }: Props) {
             underlineColorAndroid="transparent"
             selectionColor={GREEN}
             cursorColor={GREEN}
-            editable={!codeSent && !loading}
+            editable={!loading}
           />
         </View>
 
@@ -161,18 +203,37 @@ export default function LoginScreen({ onSuccess }: Props) {
                 editable={!loading}
               />
             </View>
+
+            {/* Повторная отправка с таймером */}
+            <TouchableOpacity
+              onPress={handleResend}
+              disabled={cooldown > 0 || loading}
+              style={styles.resendRow}
+              activeOpacity={0.7}
+            >
+              {cooldown > 0
+                ? <Text style={styles.resendCooldown}>Повторить через {cooldown} сек.</Text>
+                : <Text style={styles.resendTxt}>Отправить код повторно</Text>
+              }
+            </TouchableOpacity>
           </>
         )}
 
         {!!error && <Text style={styles.errorTxt}>{error}</Text>}
 
-        <TouchableOpacity style={styles.termsRow} activeOpacity={0.7} onPress={() => { if (!codeSent) setAgreed(v => !v); }} disabled={codeSent}>
+        <TouchableOpacity
+          style={styles.termsRow}
+          activeOpacity={0.7}
+          onPress={() => setAgreed(v => !v)}
+        >
           <View style={[styles.checkbox, agreed && styles.checkboxChecked]}>
             {agreed && <Text style={styles.checkmark}>✓</Text>}
           </View>
           <Text style={[styles.terms, { flex: 1 }]}>
             {'Продолжая, вы соглашаетесь с '}
-            <Text style={styles.termsLink}>условиями и политикой конфиденциальности</Text>
+            <Text style={styles.termsLink} onPress={() => setShowOffer(true)}>публичной офертой</Text>
+            {' и '}
+            <Text style={styles.termsLink} onPress={() => setShowPrivacy(true)}>политикой конфиденциальности</Text>
             {'.'}
           </Text>
         </TouchableOpacity>
@@ -180,21 +241,16 @@ export default function LoginScreen({ onSuccess }: Props) {
 
       <View style={styles.bottom}>
         <TouchableOpacity
-          style={[styles.button, (loading || (!agreed && !codeSent)) && styles.buttonDisabled]}
+          style={[styles.button, !canSend && styles.buttonDisabled]}
           activeOpacity={0.85}
           onPress={handlePress}
-          disabled={loading || (!agreed && !codeSent)}
+          disabled={!canSend}
         >
           {loading
             ? <ActivityIndicator color="#fff" />
             : <Text style={styles.buttonText}>{codeSent ? 'Войти' : 'Получить код'}</Text>
           }
         </TouchableOpacity>
-        {codeSent && !loading && (
-          <TouchableOpacity onPress={() => { setCodeSent(false); setCode(''); setError(''); }}>
-            <Text style={styles.resendTxt}>Отправить код повторно</Text>
-          </TouchableOpacity>
-        )}
         {!codeSent && (
           <Text style={styles.hint}>
             Не приходит SMS? Проверьте сигнал{'\n'}и не отключайте приложение во время получения кода.
@@ -205,8 +261,8 @@ export default function LoginScreen({ onSuccess }: Props) {
   );
 }
 
-const GREEN        = '#8DBB00';
-const GREEN_BORDER = '#6A9A00';
+const GREEN        = '#E8242E';
+const GREEN_BORDER = '#A01020';
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#fff' },
@@ -260,6 +316,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 14,
   },
+  resendRow: { marginTop: -10, marginBottom: 18, alignItems: 'center' },
+  resendTxt: {
+    color: GREEN,
+    fontSize: 14,
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  resendCooldown: {
+    color: 'rgba(0,0,0,0.35)',
+    fontSize: 13,
+  },
   errorTxt: {
     color: '#e05252',
     fontSize: 13,
@@ -287,12 +354,6 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: { opacity: 0.6 },
   buttonText: { color: '#fff', fontSize: 18, fontWeight: '700', letterSpacing: 0.2 },
-  resendTxt: {
-    color: 'rgba(0,0,0,0.4)',
-    fontSize: 14,
-    textAlign: 'center',
-    textDecorationLine: 'underline',
-  },
   hint: {
     color: 'rgba(0,0,0,0.3)',
     fontSize: 13,
@@ -300,3 +361,4 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
+

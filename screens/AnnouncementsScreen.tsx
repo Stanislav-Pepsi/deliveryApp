@@ -1,4 +1,4 @@
-import { Ionicons } from '@expo/vector-icons';
+﻿import { Ionicons } from '@expo/vector-icons';
 import { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,8 +14,8 @@ import Text from '../components/Text';
 import { Announcement, fetchAnnouncements } from '../api/announcements';
 
 const { width: W } = Dimensions.get('window');
-const GREEN = '#8DBB00';
-const BG    = '#0c0f0a';
+const GREEN = '#E8242E';
+const BG    = '#0a0a0a';
 const CARD  = 'rgba(255,255,255,0.06)';
 
 interface Props {
@@ -142,3 +142,4 @@ const styles = StyleSheet.create({
   cardTitle: { color: '#fff', fontSize: 17, fontWeight: '800', lineHeight: 23 },
   cardBody2: { color: 'rgba(255,255,255,0.6)', fontSize: 14, lineHeight: 20 },
 });
+

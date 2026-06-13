@@ -1,4 +1,4 @@
-import { AntDesign, Ionicons } from '@expo/vector-icons';
+﻿import { AntDesign, Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
 import { useState } from 'react';
 import {
@@ -13,11 +13,13 @@ import {
   View,
 } from 'react-native';
 import Text from '../components/Text';
+import LegalModal from '../components/LegalModal';
+import { PRIVACY_POLICY_TITLE, PRIVACY_POLICY_TEXT, PUBLIC_OFFER_TITLE, PUBLIC_OFFER_TEXT } from '../constants/legal';
 import { RestaurantInfo } from '../api/restaurant';
 
-const GREEN      = '#8DBB00';
-const GREEN_DARK = '#4a6600';
-const BG         = '#0c0f0a';
+const GREEN      = '#E8242E';
+const GREEN_DARK = '#8B1520';
+const BG         = '#0a0a0a';
 const CARD       = 'rgba(255,255,255,0.06)';
 const BORDER     = 'rgba(255,255,255,0.1)';
 const SHEET_BG   = '#161a13';
@@ -71,6 +73,8 @@ export default function ProfileScreen({
   const [deleteConfirm,     setDeleteConfirm]     = useState(false);
   const [deletingAccount,   setDeletingAccount]   = useState(false);
   const [deleteError,       setDeleteError]       = useState('');
+  const [showPrivacy,       setShowPrivacy]       = useState(false);
+  const [showOffer,         setShowOffer]         = useState(false);
 
   const openEdit = () => { setDraft(name); setEditOpen(true); };
   const saveName = () => {
@@ -175,15 +179,19 @@ export default function ProfileScreen({
           <Text style={styles.deleteTxt}>Удалить аккаунт</Text>
         </TouchableOpacity>
 
-        {/* Privacy policy */}
-        <TouchableOpacity
-          style={styles.privacyRow}
-          activeOpacity={0.7}
-          onPress={() => Linking.openURL('https://osadokpepla.github.io/privacy/privacy_policy.html')}
-        >
-          <Ionicons name="shield-checkmark-outline" size={15} color="rgba(255,255,255,0.25)" />
-          <Text style={styles.privacyTxt}>Политика конфиденциальности</Text>
-        </TouchableOpacity>
+        {/* Legal links */}
+        <LegalModal visible={showPrivacy} title={PRIVACY_POLICY_TITLE} text={PRIVACY_POLICY_TEXT} onClose={() => setShowPrivacy(false)} />
+        <LegalModal visible={showOffer}   title={PUBLIC_OFFER_TITLE}   text={PUBLIC_OFFER_TEXT}   onClose={() => setShowOffer(false)} />
+        <View style={styles.legalRow}>
+          <TouchableOpacity style={styles.legalBtn} activeOpacity={0.7} onPress={() => setShowPrivacy(true)}>
+            <Ionicons name="shield-checkmark-outline" size={14} color="rgba(255,255,255,0.25)" />
+            <Text style={styles.legalTxt}>Политика конфиденциальности</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.legalBtn} activeOpacity={0.7} onPress={() => setShowOffer(true)}>
+            <Ionicons name="document-text-outline" size={14} color="rgba(255,255,255,0.25)" />
+            <Text style={styles.legalTxt}>Публичная оферта</Text>
+          </TouchableOpacity>
+        </View>
 
         <View style={{ height: 160 }} />
       </ScrollView>
@@ -334,7 +342,7 @@ const styles = StyleSheet.create({
 
   loyaltyCard: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    backgroundColor: 'rgba(141,187,0,0.08)',
+    backgroundColor: 'rgba(232,36,46,0.08)',
     borderRadius: 18, padding: 16,
     marginBottom: 12,
   },
@@ -344,7 +352,7 @@ const styles = StyleSheet.create({
 
   callBtn: {
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
-    backgroundColor: 'rgba(141,187,0,0.1)',
+    backgroundColor: 'rgba(232,36,46,0.1)',
     borderRadius: 18, paddingVertical: 16,
     borderWidth: 1, borderColor: GREEN,
     marginBottom: 12,
@@ -357,7 +365,7 @@ const styles = StyleSheet.create({
   },
   menuRow:        { flexDirection: 'row', alignItems: 'center', padding: 16, gap: 14 },
   menuRowDivider: { borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.07)' },
-  menuIconBox:    { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(141,187,0,0.12)', alignItems: 'center', justifyContent: 'center' },
+  menuIconBox:    { width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(232,36,46,0.12)', alignItems: 'center', justifyContent: 'center' },
   menuIconBoxRed: { backgroundColor: 'rgba(224,82,82,0.1)' },
   menuLabel:      { color: '#fff', fontSize: 15, fontWeight: '600', marginBottom: 1 },
   menuLabelRed:   { color: RED },
@@ -415,4 +423,8 @@ const styles = StyleSheet.create({
 
   privacyRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, marginTop: 28 },
   privacyTxt: { color: 'rgba(255,255,255,0.25)', fontSize: 12, textDecorationLine: 'underline' },
+  legalRow: { flexDirection: 'column', alignItems: 'center', gap: 10, marginTop: 28 },
+  legalBtn: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legalTxt: { color: 'rgba(255,255,255,0.25)', fontSize: 12, textDecorationLine: 'underline' },
 });
+
